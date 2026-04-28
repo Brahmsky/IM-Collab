@@ -207,3 +207,106 @@ def test_task_console_append_and_interrupt_queue_control_commands(tmp_path: Path
     assert commands[0]["type"] == "append_instruction"
     assert commands[0]["payload"]["text"] == "补充移动端入口"
     assert commands[1]["type"] == "interrupt"
+
+
+def test_task_console_ack_marks_task_and_snapshot_shows_ack(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "failed-1" / "status.json",
+        {
+            "task_id": "failed-1",
+            "state": "failed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": "failed",
+        },
+    )
+
+    ack_result = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "task_console.py"),
+            "--tasks-root",
+            str(tasks_root),
+            "ack",
+            "failed-1",
+            "--note",
+            "已确认",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    snapshot = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "task_console.py"),
+            "--tasks-root",
+            str(tasks_root),
+            "--event-dir",
+            str(tmp_path / "events"),
+            "--plain",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "ack queued for failed-1" in ack_result.stdout
+    assert "ack: operator" in snapshot.stdout
+    assert "已确认" in (tasks_root / "failed-1" / "ack.json").read_text(encoding="utf-8")
+
+
+def test_task_console_retry_reruns_golembot_task(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "failed-1"
+    task_dir.mkdir(parents=True)
+    (task_dir / "request.md").write_text(
+        """# GolemBot Office Request
+
+session_key: feishu:oc_group
+chat_id: oc_group
+sender_id: ou_user
+
+## User Message
+
+生成项目方案和 PPT
+
+## Execution Boundary
+
+tools
+""",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_retry(task_dir_arg: Path, generator: str = "app-server", publish: bool = False):
+        seen["task_dir"] = task_dir_arg
+        seen["generator"] = generator
+        seen["publish"] = publish
+        return {"task_id": task_dir_arg.name}
+
+    import scripts.task_console as task_console
+
+    monkeypatch.setattr(task_console, "retry_golembot_task", fake_retry)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "task_console.py",
+            "--tasks-root",
+            str(tasks_root),
+            "retry",
+            "failed-1",
+            "--generator",
+            "app-server",
+            "--publish",
+        ],
+    )
+
+    assert task_console.main() == 0
+
+    assert seen["task_dir"] == task_dir
+    assert seen["generator"] == "app-server"
+    assert seen["publish"] is True

@@ -21,6 +21,8 @@ class TaskSummary:
     codex_thread_id: str
     active_turn_id: str
     control_count: int
+    ack_operator: str
+    ack_note: str
     path: Path
 
 
@@ -71,6 +73,8 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
         codex_thread_id=str(binding.get("codex_thread_id") or ""),
         active_turn_id=str(binding.get("active_turn_id") or ""),
         control_count=_control_count(task_dir),
+        ack_operator=_ack_value(task_dir, "operator"),
+        ack_note=_ack_value(task_dir, "note"),
         path=task_dir,
     )
 
@@ -110,3 +114,10 @@ def _control_count(task_dir: Path) -> int:
     if not control_path.exists():
         return 0
     return sum(1 for line in control_path.read_text(encoding="utf-8").splitlines() if line.strip())
+
+
+def _ack_value(task_dir: Path, key: str) -> str:
+    ack_path = task_dir / "ack.json"
+    if not ack_path.exists():
+        return ""
+    return str(_read_json(ack_path).get(key) or "")

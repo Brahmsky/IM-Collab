@@ -23,14 +23,14 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 - 本地 smoke：不依赖飞书，验证任务协议。
 - 飞书群聊：bot 进群后，@ bot 可触发任务。
 - 真实交付：可创建飞书文档、Slides、白板并回群。
-- 控制台快照：可查看 `tasks/` 和 `events/` 状态。
+- 控制台：可查看 `tasks/` 和 `events/` 状态，也能追加指令、打断、重试、确认。
 - Codex 后端：已有 `codex exec` 路径，也有 `codex app-server` 持久 session 路径。
 
 ### 当前还缺什么
 
 - `app-server` 已是飞书 GolemBot 链路默认后端；手动脚本仍可显式指定 `local` 或 `codex`。
 - 同一飞书会话已能复用 Codex thread；active turn 期间的新消息会写入 `control.jsonl` 并由 runner 转成 `turn/steer`。
-- 控制台已有任务快照、thread/turn 可视、追加指令和打断；还缺 retry、ack 和桌面 GUI。
+- 控制台已有任务快照、thread/turn 可视、追加指令、打断、重试和确认；还缺桌面 GUI。
 - 语音、离线、冲突合并、富媒体布局属于后续加分项。
 
 ### 和赛题是否对齐
@@ -321,6 +321,18 @@ rtk .venv/bin/python scripts/task_console.py append <task_id> --text "补充移�
 rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 ```
 
+重试一个 GolemBot office 任务：
+
+```bash
+rtk .venv/bin/python scripts/task_console.py retry <task_id> --generator app-server --publish
+```
+
+确认一个失败或已处理的任务：
+
+```bash
+rtk .venv/bin/python scripts/task_console.py ack <task_id> --note "已确认，稍后复测"
+```
+
 ## 10. 后续开发流程
 
 按这个顺序做。
@@ -342,6 +354,7 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
    - 展示任务、事件、产物、错误、thread/turn。
    - 支持 append instruction、interrupt、retry、ack。
    - 控制动作复用 `tasks/<task_id>/control.jsonl`，由 Bridge 消费。
+   - 下一步把这些动作搬到轻量 GUI，CLI 继续作为稳定底座。
 
 4. **比赛演示闭环**
    - 手机端群聊 @Agent。

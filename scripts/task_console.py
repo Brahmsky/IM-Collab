@@ -9,6 +9,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from bridge.task_control import append_control_command
 from bridge.task_index import TaskSummary, build_task_index, summarize_events
+from bridge.task_ops import ack_task, retry_golembot_task
 
 
 def render_plain(tasks_root: Path, event_dir: Path, limit: int, state: str | None = None) -> str:
@@ -34,6 +35,11 @@ def render_plain(tasks_root: Path, event_dir: Path, limit: int, state: str | Non
             lines.append(f"  turn: {task.active_turn_id}")
         if task.control_count:
             lines.append(f"  control: {task.control_count} queued")
+        if task.ack_operator:
+            ack_line = f"  ack: {task.ack_operator}"
+            if task.ack_note:
+                ack_line += f" ({_clip(task.ack_note, 80)})"
+            lines.append(ack_line)
         if task.error:
             lines.append(f"  error: {_clip(task.error)}")
         if task.summary:
@@ -74,6 +80,15 @@ def main() -> int:
 
     interrupt_parser = subparsers.add_parser("interrupt", help="Interrupt a running task.")
     interrupt_parser.add_argument("task_id")
+
+    ack_parser = subparsers.add_parser("ack", help="Mark a task as acknowledged by an operator.")
+    ack_parser.add_argument("task_id")
+    ack_parser.add_argument("--note", default="")
+
+    retry_parser = subparsers.add_parser("retry", help="Retry a GolemBot office task from request.md.")
+    retry_parser.add_argument("task_id")
+    retry_parser.add_argument("--generator", choices=("local", "codex", "app-server"), default="app-server")
+    retry_parser.add_argument("--publish", action="store_true")
     args = parser.parse_args()
 
     if args.command == "append":
@@ -88,6 +103,14 @@ def main() -> int:
     if args.command == "interrupt":
         append_control_command(args.tasks_root / args.task_id, "interrupt", {}, operator="operator")
         print(f"interrupt queued for {args.task_id}")
+        return 0
+    if args.command == "ack":
+        ack_task(args.tasks_root / args.task_id, operator="operator", note=args.note)
+        print(f"ack queued for {args.task_id}")
+        return 0
+    if args.command == "retry":
+        retry_golembot_task(args.tasks_root / args.task_id, generator=args.generator, publish=args.publish)
+        print(f"retry started for {args.task_id}")
         return 0
 
     print(render_plain(args.tasks_root, args.event_dir, args.limit, state=args.state), end="")
