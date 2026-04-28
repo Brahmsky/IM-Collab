@@ -339,6 +339,8 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 
 如果 `brief.json` 中有 `conflict` 或 `open_question`，任务会进入 `waiting_for_user`，并写出 `confirmation.md`。同一群聊里的后续确认消息会写入 `control.jsonl`，后续继续执行或重试时 Codex 会读取这些确认信息。
 
+如果用户在同一群聊里明确说“开始执行 / 开始生成 / 确认开始”，Bridge 会复用原 `task_id`，读取已经记录的确认信息，继续生成并发布产物。
+
 重试一个 GolemBot office 任务：
 
 ```bash

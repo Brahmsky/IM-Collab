@@ -57,6 +57,39 @@ def dispatch_event_via_golembot(
         }
     waiting_result = _append_to_waiting_task_if_available(tasks_root, session_key, parsed)
     if waiting_result is not None:
+        if publish and _is_start_command(parsed.text):
+            task_result = office_runner(
+                message=parsed.text,
+                session_key=session_key,
+                chat_id=parsed.chat_id,
+                sender_id=parsed.sender_open_id,
+                tasks_root=tasks_root,
+                task_id=str(waiting_result["task_id"]),
+                generator=generator,
+                publish=False,
+                conversation_context=[],
+            )
+            publish_result = None
+            if task_result.get("state") == "waiting_for_user":
+                reply_markdown = str(task_result.get("reply_markdown") or "我已记录确认，但仍需要补充信息后再继续。")
+            else:
+                publish_result = publisher(Path(str(task_result["task_dir"])))
+                reply_markdown = build_delivery_markdown(publish_result["artifacts"])
+            reply = replier(
+                parsed.message_id,
+                reply_markdown,
+                f"{parsed.message_id}-golembot-waiting-start",
+                not execute_reply,
+            )
+            return {
+                **waiting_result,
+                "session_key": session_key,
+                "message_id": parsed.message_id,
+                "task": task_result,
+                "publish": publish_result,
+                "reply_markdown": reply_markdown,
+                "reply": reply,
+            }
         reply_markdown = "已记录这条确认。我会在继续执行时把它纳入当前任务。"
         reply = replier(
             parsed.message_id,
@@ -200,6 +233,11 @@ def _is_office_deliverable(text: str) -> bool:
     if any(term in text for term in action_terms) and any(term in text for term in artifact_terms):
         return True
     return "IM-Collab" in text and "6" in text
+
+
+def _is_start_command(text: str) -> bool:
+    normalized = " ".join(text.split())
+    return any(term in normalized for term in ("开始执行", "开始生成", "确认开始", "开始做"))
 
 
 def _task_id(message_id: str) -> str:
