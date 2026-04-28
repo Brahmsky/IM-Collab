@@ -111,6 +111,26 @@ def test_codex_app_server_backend_reads_nested_turn_id_from_start_response(tmp_p
     assert result.turn_id == "turn_nested"
 
 
+def test_codex_app_server_backend_reuses_existing_thread_for_followup_task(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_456", "把 PPT 改成 5 分钟答辩版。")
+    transport = FakeLineTransport(
+        [
+            {"id": 1, "result": {"threadId": "thread_existing"}},
+            {"id": 2, "result": {"turn": {"id": "turn_followup", "status": "running"}}},
+        ]
+    )
+    backend = CodexAppServerBackend(AppServerClient(transport), project_root=Path("/repo"))
+
+    result = backend.start_task(task_dir, thread_id="thread_existing")
+
+    assert result.thread_id == "thread_existing"
+    assert result.turn_id == "turn_followup"
+    writes = [json.loads(line) for line in transport.writes]
+    assert [write["method"] for write in writes] == ["thread/resume", "turn/start"]
+    assert writes[0]["params"]["threadId"] == "thread_existing"
+    assert writes[1]["params"]["threadId"] == "thread_existing"
+
+
 def test_codex_app_server_backend_can_steer_and_interrupt_active_turn() -> None:
     transport = FakeLineTransport(
         [
@@ -180,11 +200,11 @@ def test_run_codex_app_server_task_marks_completed_after_turn_finishes(tmp_path:
     task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
 
     class FakeBackend:
-        def start_task(self, task_path: Path):
+        def start_task(self, task_path: Path, thread_id: str | None = None):
             write_codex_outputs(task_path)
             from bridge.codex_app_server import CodexTurn
 
-            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+            return CodexTurn(thread_id=thread_id or "thread_123", turn_id="turn_456")
 
         def wait_for_task(self, thread_id: str, turn_id: str):
             return {"id": turn_id, "status": "completed"}
@@ -193,3 +213,26 @@ def test_run_codex_app_server_task_marks_completed_after_turn_finishes(tmp_path:
 
     assert result.thread_id == "thread_123"
     assert result.turn_id == "turn_456"
+
+
+def test_run_codex_app_server_task_calls_turn_started_before_waiting(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    events: list[str] = []
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str):
+            events.append(f"wait:{thread_id}:{turn_id}")
+            write_codex_outputs(task_dir)
+            return {"id": turn_id, "status": "completed"}
+
+    def on_turn_started(turn):
+        events.append(f"started:{turn.thread_id}:{turn.turn_id}")
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend(), on_turn_started=on_turn_started)
+
+    assert events == ["started:thread_123:turn_456", "wait:thread_123:turn_456"]

@@ -25,6 +25,8 @@ This is not a custom agent framework. The project-owned code is only a thin brid
 `bridge/codex_app_server_task_runner.py` adds:
 
 - `run_codex_app_server_task()`: runs one task through app-server, waits for the matching `turn/completed` notification, validates required task outputs, and updates `status.json`.
+- `thread_id` reuse: when an existing `codex_thread_id` is supplied, the runner calls `thread/resume` and then starts a new turn on the existing thread.
+- `on_turn_started`: callback hook used by the Bridge to persist `active_turn_id` as soon as the turn starts, before waiting for completion.
 
 `bridge/task_binding.py` now preserves:
 
@@ -34,6 +36,8 @@ This is not a custom agent framework. The project-owned code is only a thin brid
 `bridge/golembot_office_loop.py` now supports:
 
 - `generator="app-server"` as a parallel execution path beside `local` and `codex`.
+- Existing session bindings are reused so follow-up tasks in the same Feishu session stay on the same Codex thread.
+- `active_turn_id` is visible in `tasks/task-bindings.json` while the app-server turn is running, then cleared when the task completes.
 
 ## Verified Locally
 

@@ -147,17 +147,20 @@ class CodexAppServerBackend:
         self.client = client
         self.project_root = project_root
 
-    def start_task(self, task_dir: Path) -> CodexTurn:
-        thread = self.client.request(
-            "thread/start",
-            {
-                "cwd": self.project_root.as_posix(),
-                "approvalPolicy": "never",
-                "persistExtendedHistory": True,
-                "experimentalRawEvents": False,
-            },
-        )
-        thread_id = _required_string(thread, "threadId")
+    def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+        if thread_id is None:
+            thread = self.client.request(
+                "thread/start",
+                {
+                    "cwd": self.project_root.as_posix(),
+                    "approvalPolicy": "never",
+                    "persistExtendedHistory": True,
+                    "experimentalRawEvents": False,
+                },
+            )
+            thread_id = _required_string(thread, "threadId")
+        else:
+            self.client.request("thread/resume", {"threadId": thread_id})
         turn = self.client.request(
             "turn/start",
             {

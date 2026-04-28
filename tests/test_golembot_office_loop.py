@@ -102,9 +102,9 @@ def test_run_golembot_office_task_can_publish_without_im_reply(tmp_path: Path) -
 
 def test_run_golembot_office_task_can_use_app_server_generator(tmp_path: Path) -> None:
     class FakeAppServerBackend:
-        def start_task(self, task_dir: Path) -> CodexTurn:
+        def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
             write_codex_outputs(task_dir)
-            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+            return CodexTurn(thread_id=thread_id or "thread_123", turn_id="turn_456")
 
         def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
             return {"id": turn_id, "status": "completed"}
@@ -126,3 +126,76 @@ def test_run_golembot_office_task_can_use_app_server_generator(tmp_path: Path) -
     assert read_status(tmp_path / "gb-app-server-task")["state"] == "completed"
     assert binding["codex_thread_id"] == "thread_123"
     assert binding["active_turn_id"] is None
+
+
+def test_run_golembot_office_task_reuses_existing_app_server_thread(tmp_path: Path) -> None:
+    seen: dict[str, str | None] = {}
+
+    class FakeAppServerBackend:
+        def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+            seen["thread_id"] = thread_id
+            write_codex_outputs(task_dir)
+            return CodexTurn(thread_id=thread_id or "new_thread", turn_id="turn_followup")
+
+        def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+            return {"id": turn_id, "status": "completed"}
+
+    run_golembot_office_task(
+        message="生成项目方案",
+        session_key="feishu:oc_123",
+        chat_id="oc_123",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="gb-initial-task",
+        generator="app-server",
+        publish=False,
+        codex_backend=FakeAppServerBackend(),
+    )
+
+    run_golembot_office_task(
+        message="把刚才的 PPT 改成 5 分钟答辩版",
+        session_key="feishu:oc_123",
+        chat_id="oc_123",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="gb-followup-task",
+        generator="app-server",
+        publish=False,
+        codex_backend=FakeAppServerBackend(),
+    )
+
+    binding = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")
+    assert seen["thread_id"] == "new_thread"
+    assert binding["codex_thread_id"] == "new_thread"
+
+
+def test_run_golembot_office_task_exposes_active_turn_while_app_server_runs(tmp_path: Path) -> None:
+    observed: dict[str, object] = {}
+
+    class FakeAppServerBackend:
+        def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+            return CodexTurn(thread_id="thread_live", turn_id="turn_live")
+
+        def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+            observed["binding_during_wait"] = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")
+            write_codex_outputs(tmp_path / "gb-live-turn-task")
+            return {"id": turn_id, "status": "completed"}
+
+    run_golembot_office_task(
+        message="生成项目方案",
+        session_key="feishu:oc_123",
+        chat_id="oc_123",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="gb-live-turn-task",
+        generator="app-server",
+        publish=False,
+        codex_backend=FakeAppServerBackend(),
+    )
+
+    binding_during_wait = observed["binding_during_wait"]
+    final_binding = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")
+    assert binding_during_wait["codex_thread_id"] == "thread_live"
+    assert binding_during_wait["active_turn_id"] == "turn_live"
+    assert final_binding["codex_thread_id"] == "thread_live"
+    assert final_binding["active_turn_id"] is None

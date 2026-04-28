@@ -37,7 +37,7 @@ def run_golembot_office_task(
             _request_markdown(message, session_key, chat_id, sender_id, conversation_context=conversation_context),
         )
 
-    bind_active_task(
+    binding = bind_active_task(
         bindings_path,
         session_key=session_key,
         task_id=task_id,
@@ -48,7 +48,22 @@ def run_golembot_office_task(
 
     try:
         if not (task_dir / "artifacts.json").exists():
-            codex_turn = _generate_artifacts(task_dir, generator, codex_backend=codex_backend)
+            codex_turn = _generate_artifacts(
+                task_dir,
+                generator,
+                codex_backend=codex_backend,
+                codex_thread_id=binding.get("codex_thread_id"),
+                on_turn_started=lambda turn: bind_active_task(
+                    bindings_path,
+                    session_key=session_key,
+                    task_id=task_id,
+                    chat_id=chat_id,
+                    channel_type=session_key.split(":", 1)[0],
+                    sender_id=sender_id,
+                    codex_thread_id=turn.thread_id,
+                    active_turn_id=turn.turn_id,
+                ),
+            )
             if codex_turn is not None:
                 bind_active_task(
                     bindings_path,
@@ -77,7 +92,13 @@ def run_golembot_office_task(
     }
 
 
-def _generate_artifacts(task_dir: Path, generator: str, codex_backend: AppServerTaskBackend | None = None) -> Any | None:
+def _generate_artifacts(
+    task_dir: Path,
+    generator: str,
+    codex_backend: AppServerTaskBackend | None = None,
+    codex_thread_id: str | None = None,
+    on_turn_started: Any | None = None,
+) -> Any | None:
     if generator == "local":
         run_local_smoke(task_dir)
         return None
@@ -89,6 +110,8 @@ def _generate_artifacts(task_dir: Path, generator: str, codex_backend: AppServer
             task_dir,
             project_root=Path(__file__).resolve().parents[1],
             backend=codex_backend,
+            thread_id=codex_thread_id,
+            on_turn_started=on_turn_started,
         )
     raise ValueError(f"unsupported generator: {generator}")
 

@@ -29,7 +29,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 ### 当前还缺什么
 
 - `app-server` 还不是默认主后端。
-- 同一飞书会话继续同一个 Codex thread 的续聊还没完整接入。
+- 同一飞书会话复用 Codex thread 的基础能力已有；active turn 期间自动 steer 还没完整接入。
 - GUI 还只是只读快照，不能打断、追加指令、重试。
 - 语音、离线、冲突合并、富媒体布局属于后续加分项。
 
@@ -243,6 +243,7 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 - `--generator local`：本地 mock，最快。
 - `--generator codex`：当前稳定 Codex 路径。
 - `--generator app-server`：Codex 持久 session 后端试跑。
+  同一 `session-key` 会复用已有 `codex_thread_id`，运行中会把 `active_turn_id` 写到 `tasks/task-bindings.json`。
 
 ## 8. 手动跑一个任务
 
