@@ -24,12 +24,12 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 - 飞书群聊：bot 进群后，@ bot 可触发任务。
 - 真实交付：可创建飞书文档、Slides、白板并回群。
 - 控制台快照：可查看 `tasks/` 和 `events/` 状态。
-- Codex 后端：已有 `codex exec` 路径，也有 `codex app-server` 持久 session spike。
+- Codex 后端：已有 `codex exec` 路径，也有 `codex app-server` 持久 session 路径。
 
 ### 当前还缺什么
 
 - `app-server` 还不是默认主后端。
-- 同一飞书会话复用 Codex thread 的基础能力已有；active turn 期间自动 steer 还没完整接入。
+- 同一飞书会话已能复用 Codex thread；active turn 期间的新消息会写入 `control.jsonl` 并由 runner 转成 `turn/steer`。
 - GUI 还只是只读快照，不能打断、追加指令、重试。
 - 语音、离线、冲突合并、富媒体布局属于后续加分项。
 
@@ -244,6 +244,7 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 - `--generator codex`：当前稳定 Codex 路径。
 - `--generator app-server`：Codex 持久 session 后端试跑。
   同一 `session-key` 会复用已有 `codex_thread_id`，运行中会把 `active_turn_id` 写到 `tasks/task-bindings.json`。
+  此时同一飞书会话的新消息会追加到 `tasks/<task_id>/control.jsonl`，runner 轮询后调用 `turn/steer`。
 
 ## 8. 手动跑一个任务
 
@@ -291,6 +292,7 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
 tasks/<task_id>/request.md       用户请求和群聊上下文
 tasks/<task_id>/status.json      queued/running/waiting_for_user/completed/failed
 tasks/<task_id>/artifacts.json   文档、Slides、白板、摘要、下一步
+tasks/<task_id>/control.jsonl    追加指令、打断等运行中控制命令
 ```
 
 看控制台快照：
@@ -307,6 +309,18 @@ rtk .venv/bin/python scripts/task_console.py --plain --state failed --limit 5
 
 任务是否完成，只看 `status.json` 和 `artifacts.json`，不要靠终端输出猜。
 
+给正在运行的任务追加指令：
+
+```bash
+rtk .venv/bin/python scripts/task_control.py append <task_id> --text "补充移动端入口说明"
+```
+
+打断正在运行的任务：
+
+```bash
+rtk .venv/bin/python scripts/task_control.py interrupt <task_id>
+```
+
 ## 10. 后续开发流程
 
 按这个顺序做。
@@ -315,7 +329,7 @@ rtk .venv/bin/python scripts/task_console.py --plain --state failed --limit 5
    - 一个飞书会话绑定一个 `codex_thread_id`。
    - 新任务走 `thread/start + turn/start`。
    - 后续消息复用同一个 thread。
-   - active turn 运行中走 `turn/steer`。
+   - active turn 运行中走 `control.jsonl -> turn/steer`。
    - 没有 active turn 时在同一个 thread 开新 `turn/start`。
 
 2. **飞书续聊和澄清**
@@ -327,7 +341,7 @@ rtk .venv/bin/python scripts/task_console.py --plain --state failed --limit 5
 3. **可操作控制台**
    - 展示任务、事件、产物、错误、thread/turn。
    - 支持 append instruction、interrupt、retry、ack。
-   - 控制动作先写 `tasks/<task_id>/control.jsonl`，由 Bridge 消费。
+   - 控制动作复用 `tasks/<task_id>/control.jsonl`，由 Bridge 消费。
 
 4. **比赛演示闭环**
    - 手机端群聊 @Agent。

@@ -7,6 +7,7 @@ import pytest
 
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend
 from bridge.codex_app_server_task_runner import run_codex_app_server_task
+from bridge.task_control import append_control_command
 from bridge.task_protocol import create_task
 from tests.test_codex_task_runner import write_codex_outputs
 
@@ -236,3 +237,37 @@ def test_run_codex_app_server_task_calls_turn_started_before_waiting(tmp_path: P
     run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend(), on_turn_started=on_turn_started)
 
     assert events == ["started:thread_123:turn_456", "wait:thread_123:turn_456"]
+
+
+def test_run_codex_app_server_task_steers_active_turn_from_control_log(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    seen: dict[str, object] = {"steers": []}
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+
+        def steer_turn(self, thread_id: str, turn_id: str, text: str):
+            seen["steers"].append((thread_id, turn_id, text))
+            return {"accepted": True}
+
+        def interrupt_turn(self, thread_id: str, turn_id: str):
+            raise AssertionError("interrupt should not be called")
+
+        def wait_for_task(self, thread_id: str, turn_id: str, on_idle=None):
+            append_control_command(
+                task_dir,
+                "append_instruction",
+                {"text": "补充移动端发消息的入口"},
+                operator="feishu",
+            )
+            assert on_idle is not None
+            on_idle()
+            write_codex_outputs(task_dir)
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend())
+
+    assert seen["steers"] == [("thread_123", "turn_456", "补充移动端发消息的入口")]

@@ -277,6 +277,92 @@ def test_dispatch_group_office_task_passes_recent_group_context(tmp_path: Path) 
     ]
 
 
+def test_dispatch_group_message_appends_instruction_to_active_turn(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "im-om_active"
+    task_dir.mkdir(parents=True)
+    (tasks_root / "task-bindings.json").write_text(
+        json.dumps(
+            {
+                "feishu:oc_group": {
+                    "session_key": "feishu:oc_group",
+                    "channel_type": "feishu",
+                    "chat_id": "oc_group",
+                    "sender_id": "ou_requester",
+                    "active_task_id": "im-om_active",
+                    "last_task_id": None,
+                    "codex_thread_id": "thread_live",
+                    "active_turn_id": "turn_live",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_followup",
+                "chat_id": "oc_group",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "补充一下：最后要强调手机端也能发起任务",
+                "sender_id": "ou_teammate",
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_forwarder(*args, **kwargs) -> dict[str, object]:
+        seen["forwarded"] = True
+        return {}
+
+    def fake_office_runner(**kwargs) -> dict[str, object]:
+        seen["office_kwargs"] = kwargs
+        return {}
+
+    def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["reply"] = {
+            "message_id": message_id,
+            "markdown": markdown,
+            "idempotency_key": idempotency_key,
+            "dry_run": dry_run,
+        }
+        return {"ok": True, "dry_run": dry_run}
+
+    result = dispatch_event_via_golembot(
+        event_path,
+        gateway_url="http://127.0.0.1:3199",
+        token="secret",
+        publish=True,
+        execute_reply=True,
+        tasks_root=tasks_root,
+        forwarder=fake_forwarder,
+        office_runner=fake_office_runner,
+        replier=fake_replier,
+    )
+
+    assert "forwarded" not in seen
+    assert "office_kwargs" not in seen
+    assert seen["reply"]["message_id"] == "om_followup"
+    assert "我会把这条补充进当前任务" in seen["reply"]["markdown"]
+    assert result["task_id"] == "im-om_active"
+
+    [command] = [
+        json.loads(line)
+        for line in (task_dir / "control.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert command["type"] == "append_instruction"
+    assert command["operator"] == "feishu"
+    assert command["payload"]["text"] == "补充一下：最后要强调手机端也能发起任务"
+    assert command["payload"]["message_id"] == "om_followup"
+    assert command["payload"]["session_key"] == "feishu:oc_group"
+    assert command["payload"]["codex_thread_id"] == "thread_live"
+    assert command["payload"]["active_turn_id"] == "turn_live"
+
+
 def test_dispatch_event_routes_mojibake_office_request_outside_golembot(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"

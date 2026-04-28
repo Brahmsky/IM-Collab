@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Callable, Protocol
 
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, CodexTurn, StdioAppServerTransport
 from bridge.codex_task_runner import REQUIRED_CODEX_OUTPUTS
+from bridge.task_control import read_control_commands
 from bridge.task_protocol import write_status
 
 
 class AppServerTaskBackend(Protocol):
     def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn: ...
 
-    def wait_for_task(self, thread_id: str, turn_id: str) -> dict: ...
+    def wait_for_task(self, thread_id: str, turn_id: str, on_idle: Callable[[], None] | None = None) -> dict: ...
+
+    def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict: ...
+
+    def interrupt_turn(self, thread_id: str, turn_id: str) -> dict: ...
 
 
 def run_codex_app_server_task(
@@ -37,7 +43,17 @@ def run_codex_app_server_task(
             raise RuntimeError("codex app-server did not return an active turn id")
         if on_turn_started:
             on_turn_started(turn)
-        backend.wait_for_task(turn.thread_id, turn.turn_id)
+        control_offset = 0
+
+        def process_controls() -> None:
+            nonlocal control_offset
+            commands = read_control_commands(task_dir)
+            for command in commands[control_offset:]:
+                _apply_control_command(backend, turn, command)
+            control_offset = len(commands)
+
+        process_controls()
+        _wait_for_task(backend, turn, process_controls)
         _validate_outputs(task_dir)
     except Exception as exc:
         write_status(task_dir, "failed", error=f"Codex app-server task failed: {exc}")
@@ -55,3 +71,28 @@ def _validate_outputs(task_dir: Path) -> None:
         path = task_dir / filename
         if not path.exists():
             raise FileNotFoundError(f"missing Codex output: {path}")
+
+
+def _wait_for_task(
+    backend: AppServerTaskBackend,
+    turn: CodexTurn,
+    on_idle: Callable[[], None],
+) -> dict:
+    if "on_idle" in inspect.signature(backend.wait_for_task).parameters:
+        return backend.wait_for_task(turn.thread_id, str(turn.turn_id), on_idle=on_idle)
+    return backend.wait_for_task(turn.thread_id, str(turn.turn_id))
+
+
+def _apply_control_command(
+    backend: AppServerTaskBackend,
+    turn: CodexTurn,
+    command: dict,
+) -> None:
+    command_type = command.get("type")
+    payload = command.get("payload") if isinstance(command.get("payload"), dict) else {}
+    if command_type == "append_instruction":
+        text = payload.get("text")
+        if isinstance(text, str) and text.strip():
+            backend.steer_turn(turn.thread_id, str(turn.turn_id), text)
+    elif command_type == "interrupt":
+        backend.interrupt_turn(turn.thread_id, str(turn.turn_id))

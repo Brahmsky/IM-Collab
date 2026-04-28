@@ -12,6 +12,7 @@ from bridge.lark_im import list_chat_messages
 from bridge.lark_im import build_delivery_markdown, reply_to_message
 from bridge.task_binding import get_task_binding
 from bridge.task_binding import build_golembot_session_key
+from bridge.task_control import append_control_command
 
 Forwarder = Callable[..., dict[str, Any]]
 Replier = Callable[[str, str, str, bool], dict[str, Any]]
@@ -37,6 +38,22 @@ def dispatch_event_via_golembot(
     payload = json.loads(event_path.read_text(encoding="utf-8"))
     parsed = parse_im_event(payload)
     session_key = build_golembot_session_key("feishu", parsed.chat_id, parsed.sender_open_id, parsed.chat_type)
+    active_result = _append_to_active_turn_if_available(tasks_root, session_key, parsed)
+    if active_result is not None:
+        reply_markdown = "收到，我会把这条补充进当前任务。"
+        reply = replier(
+            parsed.message_id,
+            reply_markdown,
+            f"{parsed.message_id}-golembot-active-turn",
+            not execute_reply,
+        )
+        return {
+            **active_result,
+            "session_key": session_key,
+            "message_id": parsed.message_id,
+            "reply_markdown": reply_markdown,
+            "reply": reply,
+        }
 
     if publish and _is_office_deliverable(parsed.text):
         task_id = _task_id(parsed.message_id)
@@ -91,6 +108,36 @@ def _publish_bound_task(tasks_root: Path, session_key: str, publisher: Publisher
     if not task_id:
         raise RuntimeError(f"no active task binding for session {session_key}")
     return publisher(tasks_root / str(task_id))
+
+
+def _append_to_active_turn_if_available(
+    tasks_root: Path,
+    session_key: str,
+    parsed: Any,
+) -> dict[str, Any] | None:
+    binding = get_task_binding(tasks_root / "task-bindings.json", session_key)
+    if not binding:
+        return None
+    task_id = binding.get("active_task_id")
+    codex_thread_id = binding.get("codex_thread_id")
+    active_turn_id = binding.get("active_turn_id")
+    if not task_id or not codex_thread_id or not active_turn_id:
+        return None
+    command = append_control_command(
+        tasks_root / str(task_id),
+        "append_instruction",
+        {
+            "text": parsed.text,
+            "message_id": parsed.message_id,
+            "session_key": session_key,
+            "chat_id": parsed.chat_id,
+            "sender_id": parsed.sender_open_id,
+            "codex_thread_id": codex_thread_id,
+            "active_turn_id": active_turn_id,
+        },
+        operator="feishu",
+    )
+    return {"task_id": str(task_id), "control": command}
 
 
 def _is_office_deliverable(text: str) -> bool:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
+import select
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, Sequence
+from typing import Any, Callable, Protocol, Sequence
 
 from bridge.codex_task_runner import build_codex_task_prompt
 
@@ -13,7 +14,7 @@ from bridge.codex_task_runner import build_codex_task_prompt
 class LineTransport(Protocol):
     def write_line(self, line: str) -> None: ...
 
-    def read_line(self) -> str: ...
+    def read_line(self, timeout_seconds: float | None = None) -> str | None: ...
 
 
 class StdioAppServerTransport:
@@ -37,9 +38,13 @@ class StdioAppServerTransport:
         self.process.stdin.write(line + "\n")
         self.process.stdin.flush()
 
-    def read_line(self) -> str:
+    def read_line(self, timeout_seconds: float | None = None) -> str | None:
         if self.process.stdout is None:
             raise RuntimeError("codex app-server stdout is closed")
+        if timeout_seconds is not None:
+            ready, _, _ = select.select([self.process.stdout], [], [], timeout_seconds)
+            if not ready:
+                return None
         line = self.process.stdout.readline()
         if not line:
             stderr = self.process.stderr.read() if self.process.stderr else ""
@@ -64,6 +69,7 @@ class AppServerClient:
         self.client_name = client_name
         self.client_title = client_title
         self.client_version = client_version
+        self._pending_messages: list[dict[str, Any]] = []
 
     def initialize(self) -> dict[str, Any]:
         result = self.request(
@@ -92,8 +98,9 @@ class AppServerClient:
         )
 
         while True:
-            response = json.loads(self.transport.read_line())
+            response = self._read_transport_message()
             if response.get("id") != request_id:
+                self._pending_messages.append(response)
                 continue
             if "error" in response:
                 error = response["error"]
@@ -116,10 +123,21 @@ class AppServerClient:
         thread_id: str,
         turn_id: str,
         timeout_seconds: float = 1800,
+        on_idle: Callable[[], None] | None = None,
+        poll_interval_seconds: float = 0.5,
     ) -> dict[str, Any]:
         deadline = time.monotonic() + timeout_seconds
         while time.monotonic() < deadline:
-            message = json.loads(self.transport.read_line())
+            if self._pending_messages:
+                message = self._pending_messages.pop(0)
+            else:
+                remaining = deadline - time.monotonic()
+                read_timeout = min(poll_interval_seconds, max(0.0, remaining))
+                message = self._read_transport_message(timeout_seconds=read_timeout)
+                if message is None:
+                    if on_idle:
+                        on_idle()
+                    continue
             if message.get("method") != "turn/completed":
                 continue
             params = message.get("params") if isinstance(message.get("params"), dict) else {}
@@ -134,6 +152,16 @@ class AppServerClient:
                 raise RuntimeError(str(error.get("message") or "codex turn failed"))
             return turn
         raise TimeoutError(f"timed out waiting for Codex turn {turn_id}")
+
+    def _read_transport_message(self, timeout_seconds: float | None = None) -> dict[str, Any] | None:
+        try:
+            line = self.transport.read_line(timeout_seconds=timeout_seconds)
+        except TypeError:
+            line = self.transport.read_line()
+        if line is None:
+            return None
+        message = json.loads(line)
+        return message if isinstance(message, dict) else {"value": message}
 
 
 @dataclass(frozen=True)
@@ -196,8 +224,13 @@ class CodexAppServerBackend:
             },
         )
 
-    def wait_for_task(self, thread_id: str, turn_id: str) -> dict[str, Any]:
-        return self.client.wait_for_turn_completed(thread_id, turn_id)
+    def wait_for_task(
+        self,
+        thread_id: str,
+        turn_id: str,
+        on_idle: Callable[[], None] | None = None,
+    ) -> dict[str, Any]:
+        return self.client.wait_for_turn_completed(thread_id, turn_id, on_idle=on_idle)
 
 
 def _text_input(text: str) -> list[dict[str, str]]:
