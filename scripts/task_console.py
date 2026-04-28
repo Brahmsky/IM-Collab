@@ -7,6 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from bridge.task_control import append_control_command
 from bridge.task_index import TaskSummary, build_task_index, summarize_events
 
 
@@ -25,6 +26,14 @@ def render_plain(tasks_root: Path, event_dir: Path, limit: int, state: str | Non
     lines.append("tasks:")
     for task in tasks:
         lines.append(f"- {task.task_id} {task.state} updated={task.updated_at}")
+        if task.session_key:
+            lines.append(f"  session: {task.session_key}")
+        if task.codex_thread_id:
+            lines.append(f"  thread: {task.codex_thread_id}")
+        if task.active_turn_id:
+            lines.append(f"  turn: {task.active_turn_id}")
+        if task.control_count:
+            lines.append(f"  control: {task.control_count} queued")
         if task.error:
             lines.append(f"  error: {_clip(task.error)}")
         if task.summary:
@@ -58,7 +67,28 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--state", choices=("queued", "running", "waiting_for_user", "completed", "failed"))
     parser.add_argument("--plain", action="store_true", help="Render a plain text snapshot and exit.")
+    subparsers = parser.add_subparsers(dest="command")
+    append_parser = subparsers.add_parser("append", help="Append an instruction to a running task.")
+    append_parser.add_argument("task_id")
+    append_parser.add_argument("--text", required=True)
+
+    interrupt_parser = subparsers.add_parser("interrupt", help="Interrupt a running task.")
+    interrupt_parser.add_argument("task_id")
     args = parser.parse_args()
+
+    if args.command == "append":
+        append_control_command(
+            args.tasks_root / args.task_id,
+            "append_instruction",
+            {"text": args.text},
+            operator="operator",
+        )
+        print(f"append_instruction queued for {args.task_id}")
+        return 0
+    if args.command == "interrupt":
+        append_control_command(args.tasks_root / args.task_id, "interrupt", {}, operator="operator")
+        print(f"interrupt queued for {args.task_id}")
+        return 0
 
     print(render_plain(args.tasks_root, args.event_dir, args.limit, state=args.state), end="")
     return 0

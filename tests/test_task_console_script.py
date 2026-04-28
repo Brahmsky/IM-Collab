@@ -107,3 +107,103 @@ def test_task_console_filters_state_and_truncates_long_error(tmp_path: Path) -> 
     assert "first line" in completed.stdout
     assert len(completed.stdout.split("error: ", 1)[1].splitlines()[0]) <= 123
     assert "..." in completed.stdout
+
+
+def test_task_console_prints_active_turn_and_control_queue(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "active-1" / "status.json",
+        {
+            "task_id": "active-1",
+            "state": "running",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    (tasks_root / "active-1" / "control.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"type": "append_instruction", "payload": {"text": "补充 A"}}, ensure_ascii=False),
+                json.dumps({"type": "interrupt", "payload": {}}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_group": {
+                "session_key": "feishu:oc_group",
+                "active_task_id": "active-1",
+                "codex_thread_id": "thread_123",
+                "active_turn_id": "turn_456",
+            }
+        },
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "task_console.py"),
+            "--tasks-root",
+            str(tasks_root),
+            "--event-dir",
+            str(tmp_path / "events"),
+            "--plain",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "session: feishu:oc_group" in completed.stdout
+    assert "thread: thread_123" in completed.stdout
+    assert "turn: turn_456" in completed.stdout
+    assert "control: 2 queued" in completed.stdout
+
+
+def test_task_console_append_and_interrupt_queue_control_commands(tmp_path: Path) -> None:
+    repo = Path(__file__).resolve().parents[1]
+    tasks_root = tmp_path / "tasks"
+
+    append_result = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "task_console.py"),
+            "--tasks-root",
+            str(tasks_root),
+            "append",
+            "active-1",
+            "--text",
+            "补充移动端入口",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    interrupt_result = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "task_console.py"),
+            "--tasks-root",
+            str(tasks_root),
+            "interrupt",
+            "active-1",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "append_instruction queued for active-1" in append_result.stdout
+    assert "interrupt queued for active-1" in interrupt_result.stdout
+    commands = [
+        json.loads(line)
+        for line in (tasks_root / "active-1" / "control.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert commands[0]["type"] == "append_instruction"
+    assert commands[0]["payload"]["text"] == "补充移动端入口"
+    assert commands[1]["type"] == "interrupt"

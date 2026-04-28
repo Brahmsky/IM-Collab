@@ -30,7 +30,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 
 - `app-server` 已是飞书 GolemBot 链路默认后端；手动脚本仍可显式指定 `local` 或 `codex`。
 - 同一飞书会话已能复用 Codex thread；active turn 期间的新消息会写入 `control.jsonl` 并由 runner 转成 `turn/steer`。
-- GUI 还只是只读快照，不能打断、追加指令、重试。
+- 控制台已有任务快照、thread/turn 可视、追加指令和打断；还缺 retry、ack 和桌面 GUI。
 - 语音、离线、冲突合并、富媒体布局属于后续加分项。
 
 ### 和赛题是否对齐
@@ -61,7 +61,7 @@ events/                   运行时事件目录，不提交
 - `bridge/feishu_delivery.py`：发布本地产物到飞书。
 - `scripts/run_event_consumer.py`：消费飞书事件。
 - `scripts/run_golembot_office_task.py`：手动跑一个任务。
-- `scripts/task_console.py`：查看任务状态。
+- `scripts/task_console.py`：查看任务状态，并给运行中任务追加指令或打断。
 
 ## 3. 环境
 
@@ -312,13 +312,13 @@ rtk .venv/bin/python scripts/task_console.py --plain --state failed --limit 5
 给正在运行的任务追加指令：
 
 ```bash
-rtk .venv/bin/python scripts/task_control.py append <task_id> --text "补充移动端入口说明"
+rtk .venv/bin/python scripts/task_console.py append <task_id> --text "补充移动端入口说明"
 ```
 
 打断正在运行的任务：
 
 ```bash
-rtk .venv/bin/python scripts/task_control.py interrupt <task_id>
+rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 ```
 
 ## 10. 后续开发流程
