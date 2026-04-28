@@ -55,7 +55,7 @@ def test_dispatch_event_via_golembot_forwards_and_replies(tmp_path: Path) -> Non
     )
 
     assert seen["publish"] is False
-    assert seen["generator"] == "codex"
+    assert seen["generator"] == "app-server"
     assert seen["message_id"] == "om_123"
     assert seen["markdown"].startswith("任务 `gb-123` 已完成")
     assert seen["dry_run"] is True
@@ -203,7 +203,7 @@ def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path
     )
 
     assert "forwarded" not in seen
-    assert seen["office_kwargs"]["generator"] == "codex"
+    assert seen["office_kwargs"]["generator"] == "app-server"
     assert seen["office_kwargs"]["task_id"] == "im-om_123"
     assert seen["published_task_dir"] == task_dir
     assert "你好，我是你的办公协作助手。" in seen["markdown"]

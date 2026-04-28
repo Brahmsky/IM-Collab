@@ -22,7 +22,7 @@ def test_build_golembot_prompt_includes_event_metadata() -> None:
     assert "cd /home/lifei/Programs/IM-Collab" in prompt
     assert "scripts/run_golembot_office_task.py" in prompt
     assert "--task-id im-om_123" in prompt
-    assert "--generator codex" in prompt
+    assert "--generator app-server" in prompt
     assert "--generator local" not in prompt
 
 

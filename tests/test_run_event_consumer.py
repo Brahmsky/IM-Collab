@@ -60,3 +60,30 @@ def test_golembot_handler_passes_app_server_generator(monkeypatch) -> None:
     run_event_consumer.build_handler(args, build_config())(Path("/tmp/event.json"))
 
     assert seen["generator"] == "app-server"
+
+
+def test_main_defaults_golembot_generator_to_app_server(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    class FakeConsumer:
+        def __init__(self, config, handler):
+            seen["config"] = config
+            seen["handler"] = handler
+
+        def process_once(self):
+            seen["handler"](Path("/tmp/event.json"))
+            return 1
+
+    def fake_dispatch(event_path: Path, **kwargs) -> None:
+        seen["dispatch"] = kwargs
+
+    monkeypatch.setattr(run_event_consumer, "EventConsumer", FakeConsumer)
+    monkeypatch.setattr(run_event_consumer, "dispatch_event_via_golembot", fake_dispatch)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_event_consumer.py", "--once", "--dispatch", "golembot"],
+    )
+
+    assert run_event_consumer.main() == 0
+
+    assert seen["dispatch"]["generator"] == "app-server"

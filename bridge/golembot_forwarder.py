@@ -12,7 +12,7 @@ Transport = Callable[[str, str, dict[str, str]], dict[str, Any]]
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def build_golembot_prompt(payload: dict[str, Any], publish: bool = False, generator: str = "codex") -> str:
+def build_golembot_prompt(payload: dict[str, Any], publish: bool = False, generator: str = "app-server") -> str:
     event = parse_im_event(payload)
     session_key = _session_key(event)
     task_id = _task_id(event.message_id)
@@ -47,7 +47,7 @@ def forward_event_to_golembot(
     gateway_url: str,
     token: str,
     publish: bool = False,
-    generator: str = "codex",
+    generator: str = "app-server",
     transport: Transport | None = None,
 ) -> dict[str, Any]:
     event = parse_im_event(payload)

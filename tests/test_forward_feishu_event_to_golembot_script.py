@@ -34,6 +34,7 @@ def test_forward_script_can_dry_run(tmp_path: Path) -> None:
     result = json.loads(completed.stdout)
     assert result["session_key"] == "feishu:oc_456:ou_789"
     assert "scripts/run_golembot_office_task.py" in result["message"]
+    assert "--generator app-server" in result["message"]
 
 
 def test_forward_script_can_dry_run_reply_from_response_file(tmp_path: Path) -> None:

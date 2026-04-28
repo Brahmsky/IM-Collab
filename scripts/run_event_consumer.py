@@ -64,7 +64,7 @@ def main() -> int:
     parser.add_argument("--golembot-url", default="http://127.0.0.1:3199")
     parser.add_argument("--golembot-token", default="local-golembot-spike")
     parser.add_argument("--publish", action="store_true", help="Ask GolemBot task runner to publish real Feishu artifacts.")
-    parser.add_argument("--generator", choices=("codex", "local", "app-server"), default="codex")
+    parser.add_argument("--generator", choices=("codex", "local", "app-server"), default="app-server")
     args = parser.parse_args()
 
     config = build_config(

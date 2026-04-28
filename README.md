@@ -28,7 +28,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 
 ### 当前还缺什么
 
-- `app-server` 还不是默认主后端。
+- `app-server` 已是飞书 GolemBot 链路默认后端；手动脚本仍可显式指定 `local` 或 `codex`。
 - 同一飞书会话已能复用 Codex thread；active turn 期间的新消息会写入 `control.jsonl` 并由 runner 转成 `turn/steer`。
 - GUI 还只是只读快照，不能打断、追加指令、重试。
 - 语音、离线、冲突合并、富媒体布局属于后续加分项。
@@ -225,7 +225,6 @@ rtk .venv/bin/python scripts/subscribe_feishu_events.py --output-dir events/im
 rtk .venv/bin/python scripts/run_event_consumer.py \
   --event-dir events/im \
   --dispatch golembot \
-  --generator codex \
   --publish \
   --execute
 ```
@@ -240,9 +239,10 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 
 - `--execute`：真的回复飞书；不加就是 dry-run。
 - `--publish`：真的创建飞书文档/Slides/白板。
+- 默认后端是 `app-server`。
 - `--generator local`：本地 mock，最快。
-- `--generator codex`：当前稳定 Codex 路径。
-- `--generator app-server`：Codex 持久 session 后端试跑。
+- `--generator codex`：一次性 `codex exec` 兼容路径。
+- `--generator app-server`：Codex 持久 session 主路径。
   同一 `session-key` 会复用已有 `codex_thread_id`，运行中会把 `active_turn_id` 写到 `tasks/task-bindings.json`。
   此时同一飞书会话的新消息会追加到 `tasks/<task_id>/control.jsonl`，runner 轮询后调用 `turn/steer`。
 
@@ -272,7 +272,7 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
   --generator codex
 ```
 
-试 app-server：
+主路径 app-server：
 
 ```bash
 rtk .venv/bin/python scripts/run_golembot_office_task.py \

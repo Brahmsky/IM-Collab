@@ -26,7 +26,7 @@ def dispatch_event_via_golembot(
     gateway_url: str,
     token: str,
     publish: bool = False,
-    generator: str = "codex",
+    generator: str = "app-server",
     execute_reply: bool = False,
     tasks_root: Path = Path("tasks"),
     forwarder: Forwarder = forward_event_to_golembot,
