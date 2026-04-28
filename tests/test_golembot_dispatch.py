@@ -277,6 +277,71 @@ def test_dispatch_group_office_task_passes_recent_group_context(tmp_path: Path) 
     ]
 
 
+def test_dispatch_group_office_task_replies_confirmation_when_brief_waits(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "im-om_trigger"
+    task_dir.mkdir(parents=True)
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_trigger",
+                "chat_id": "oc_group",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "@助手 根据刚才讨论生成项目方案和 PPT",
+                "sender_id": "ou_requester",
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_context_reader(chat_id: str, page_size: int = 20):
+        return [
+            {"message_id": "om_1", "sender_id": "teacher", "content": "PPT 不超过 8 页。"},
+            {"message_id": "om_2", "sender_id": "ou_a", "content": "PPT 可以 10 页？"},
+        ]
+
+    def fake_office_runner(**kwargs) -> dict[str, object]:
+        seen["office_kwargs"] = kwargs
+        (task_dir / "confirmation.md").write_text("请确认：PPT 页数出现多个版本。引用: om_1, om_2\n", encoding="utf-8")
+        return {
+            "task_id": "im-om_trigger",
+            "task_dir": task_dir.as_posix(),
+            "state": "waiting_for_user",
+            "reply_markdown": "请确认：PPT 页数出现多个版本。引用: om_1, om_2",
+        }
+
+    def fake_publisher(published_task_dir: Path) -> dict[str, object]:
+        seen["published_task_dir"] = published_task_dir
+        return {}
+
+    def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["reply"] = {"message_id": message_id, "markdown": markdown, "dry_run": dry_run}
+        return {"ok": True}
+
+    result = dispatch_event_via_golembot(
+        event_path,
+        gateway_url="http://127.0.0.1:3199",
+        token="secret",
+        publish=True,
+        execute_reply=True,
+        tasks_root=tasks_root,
+        office_runner=fake_office_runner,
+        publisher=fake_publisher,
+        replier=fake_replier,
+        context_reader=fake_context_reader,
+    )
+
+    assert "published_task_dir" not in seen
+    assert seen["reply"]["message_id"] == "om_trigger"
+    assert "请确认" in seen["reply"]["markdown"]
+    assert result["publish"] is None
+    assert result["task"]["state"] == "waiting_for_user"
+
+
 def test_dispatch_group_message_appends_instruction_to_active_turn(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"
@@ -361,6 +426,86 @@ def test_dispatch_group_message_appends_instruction_to_active_turn(tmp_path: Pat
     assert command["payload"]["session_key"] == "feishu:oc_group"
     assert command["payload"]["codex_thread_id"] == "thread_live"
     assert command["payload"]["active_turn_id"] == "turn_live"
+
+
+def test_dispatch_group_message_appends_confirmation_to_waiting_task(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "im-om_waiting"
+    task_dir.mkdir(parents=True)
+    (task_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "task_id": "im-om_waiting",
+                "state": "waiting_for_user",
+                "created_at": "2026-04-28T01:00:00+00:00",
+                "updated_at": "2026-04-28T01:00:00+00:00",
+                "error": "需要确认",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tasks_root / "task-bindings.json").write_text(
+        json.dumps(
+            {
+                "feishu:oc_group": {
+                    "session_key": "feishu:oc_group",
+                    "channel_type": "feishu",
+                    "chat_id": "oc_group",
+                    "sender_id": "ou_requester",
+                    "active_task_id": "im-om_waiting",
+                    "last_task_id": None,
+                    "codex_thread_id": "thread_waiting",
+                    "active_turn_id": None,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_confirm",
+                "chat_id": "oc_group",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "确认按 8 页 PPT 执行",
+                "sender_id": "ou_requester",
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_office_runner(**kwargs) -> dict[str, object]:
+        seen["office_kwargs"] = kwargs
+        return {}
+
+    def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["reply"] = {"message_id": message_id, "markdown": markdown}
+        return {"ok": True}
+
+    result = dispatch_event_via_golembot(
+        event_path,
+        gateway_url="http://127.0.0.1:3199",
+        token="secret",
+        publish=True,
+        execute_reply=True,
+        tasks_root=tasks_root,
+        office_runner=fake_office_runner,
+        replier=fake_replier,
+    )
+
+    assert "office_kwargs" not in seen
+    assert "已记录这条确认" in seen["reply"]["markdown"]
+    assert result["task_id"] == "im-om_waiting"
+    [command] = [
+        json.loads(line)
+        for line in (task_dir / "control.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert command["type"] == "confirm_instruction"
+    assert command["payload"]["text"] == "确认按 8 页 PPT 执行"
 
 
 def test_dispatch_event_routes_mojibake_office_request_outside_golembot(tmp_path: Path) -> None:

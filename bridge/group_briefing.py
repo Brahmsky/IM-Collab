@@ -87,6 +87,36 @@ def render_group_brief_markdown(brief: dict[str, Any]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def brief_needs_confirmation(brief: dict[str, Any]) -> bool:
+    return any(
+        annotation.get("type") in {"conflict", "open_question"} or annotation.get("needs_confirmation") is True
+        for annotation in brief.get("annotations", [])
+    )
+
+
+def render_confirmation_markdown(brief: dict[str, Any]) -> str:
+    uncertain = [
+        annotation
+        for annotation in brief.get("annotations", [])
+        if annotation.get("type") in {"conflict", "open_question"} or annotation.get("needs_confirmation") is True
+    ]
+    lines = [
+        "你好，我是你的办公协作助手。",
+        "",
+        "我已先完成群聊旁批汇总，但发现以下信息需要确认，暂不开始生成文档/PPT/白板：",
+        "",
+    ]
+    for annotation in uncertain:
+        lines.append(f"- {annotation['claim']}（引用: {', '.join(annotation['evidence_message_ids'])}）")
+    lines.extend(
+        [
+            "",
+            "请在群里补充或确认这些问题；确认后我会继续执行生成。",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
 def _normalize_message(index: int, message: dict[str, Any]) -> dict[str, Any]:
     message_id = str(message.get("message_id") or message.get("id") or f"msg_{index:03d}")
     sender = str(message.get("sender") or message.get("sender_id") or message.get("sender_name") or "unknown")

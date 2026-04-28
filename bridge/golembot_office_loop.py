@@ -7,7 +7,8 @@ from typing import Any
 from bridge.codex_app_server_task_runner import AppServerTaskBackend, run_codex_app_server_task
 from bridge.codex_task_runner import run_codex_task
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
-from bridge.group_briefing import build_group_brief, render_group_brief_markdown
+from bridge.group_briefing import brief_needs_confirmation, build_group_brief
+from bridge.group_briefing import render_confirmation_markdown, render_group_brief_markdown
 from bridge.lark_im import build_delivery_markdown
 from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_binding import bind_active_task, clear_active_task
@@ -37,7 +38,9 @@ def run_golembot_office_task(
             task_id,
             _request_markdown(message, session_key, chat_id, sender_id, conversation_context=conversation_context),
         )
-        _write_group_brief(task_dir, chat_id, conversation_context or [])
+        brief = _write_group_brief(task_dir, chat_id, conversation_context or [])
+    else:
+        brief = None
 
     binding = bind_active_task(
         bindings_path,
@@ -47,6 +50,18 @@ def run_golembot_office_task(
         channel_type=session_key.split(":", 1)[0],
         sender_id=sender_id,
     )
+
+    if brief is not None and brief_needs_confirmation(brief):
+        reply_markdown = render_confirmation_markdown(brief)
+        (task_dir / "confirmation.md").write_text(reply_markdown, encoding="utf-8")
+        write_status(task_dir, "waiting_for_user", error="群聊旁批汇总发现冲突或待确认问题，需要确认后再生成。")
+        return {
+            "task_id": task_id,
+            "task_dir": task_dir.as_posix(),
+            "session_key": session_key,
+            "state": "waiting_for_user",
+            "reply_markdown": reply_markdown,
+        }
 
     try:
         if not (task_dir / "artifacts.json").exists():
@@ -153,12 +168,13 @@ Use Codex + superpowers as the only orchestration layer. Prefer existing Feishu 
 """
 
 
-def _write_group_brief(task_dir: Path, chat_id: str, conversation_context: list[dict[str, Any]]) -> None:
+def _write_group_brief(task_dir: Path, chat_id: str, conversation_context: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not conversation_context:
-        return
+        return None
     brief = build_group_brief(chat_id=chat_id, messages=conversation_context)
     (task_dir / "brief.json").write_text(_json_dumps(brief), encoding="utf-8")
     (task_dir / "brief.md").write_text(render_group_brief_markdown(brief), encoding="utf-8")
+    return brief
 
 
 def _conversation_context_markdown(messages: list[dict[str, Any]]) -> str:

@@ -64,6 +64,20 @@ def test_build_codex_task_prompt_prefers_group_brief_when_present(tmp_path: Path
     assert "source-grounded group brief" in prompt
 
 
+def test_build_codex_task_prompt_includes_control_log_when_present(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    (task_dir / "control.jsonl").write_text(
+        '{"type":"confirm_instruction","payload":{"text":"确认按 8 页 PPT 执行"}}\n',
+        encoding="utf-8",
+    )
+
+    prompt = build_codex_task_prompt(task_dir)
+
+    assert "control.jsonl" in prompt
+    assert "confirm_instruction" in prompt
+    assert "latest operator and group-chat instructions" in prompt
+
+
 def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
 

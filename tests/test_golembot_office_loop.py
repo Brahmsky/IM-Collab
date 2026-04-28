@@ -87,6 +87,33 @@ def test_run_golembot_office_task_writes_source_grounded_group_brief(tmp_path: P
     assert "brief.md" in request
 
 
+def test_run_golembot_office_task_waits_for_user_when_group_brief_has_conflicts(tmp_path: Path) -> None:
+    result = run_golembot_office_task(
+        message="根据刚才讨论生成方案和 PPT",
+        session_key="feishu:oc_group",
+        chat_id="oc_group",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="waiting-brief-task",
+        generator="local",
+        publish=False,
+        conversation_context=[
+            {"message_id": "om_1", "sender_id": "teacher", "content": "PPT 不超过 8 页。"},
+            {"message_id": "om_2", "sender_id": "ou_a", "content": "我记得 PPT 可以 10 页？"},
+        ],
+    )
+
+    task_dir = tmp_path / "waiting-brief-task"
+    status = read_status(task_dir)
+
+    assert status["state"] == "waiting_for_user"
+    assert "需要确认" in status["error"]
+    assert not (task_dir / "artifacts.json").exists()
+    assert (task_dir / "confirmation.md").exists()
+    assert "PPT 页数出现多个版本" in result["reply_markdown"]
+    assert result["state"] == "waiting_for_user"
+
+
 def test_run_golembot_office_task_can_publish_without_im_reply(tmp_path: Path) -> None:
     calls: list[list[str]] = []
 

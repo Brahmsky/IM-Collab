@@ -9,6 +9,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
   -> lark-cli WebSocket 收事件
   -> Python Bridge 创建 tasks/<task_id>
   -> group-briefing 生成可追溯群聊 brief
+  -> 如有冲突/待确认项，先回群确认并进入 waiting_for_user
   -> Codex + superpowers 规划、执行、验收
   -> lark-cli / Feishu API / Presenton 生成文档、Slides、白板
   -> artifacts.json / status.json 记录交付状态
@@ -24,6 +25,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 - 本地 smoke：不依赖飞书，验证任务协议。
 - 飞书群聊：bot 进群后，@ bot 可触发任务。
 - 群聊旁批汇总：群聊上下文会先生成 `brief.json` 和 `brief.md`，所有关键信息保留消息引用。
+- 确认门控：brief 出现冲突或待确认问题时，先回群确认，不直接生成产物。
 - 真实交付：可创建飞书文档、Slides、白板并回群。
 - 控制台：CLI 和本地 Web 页面都可查看 `tasks/`、`events/`，也能追加指令、打断、重试、确认。
 - Codex 后端：已有 `codex exec` 路径，也有 `codex app-server` 持久 session 路径。
@@ -334,6 +336,8 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 ```
 
 群聊任务会在生成正式产物前先写 `brief.json` 和 `brief.md`。后续文档、PPT、白板应优先使用这两个文件里的证据，不要直接凭原始群聊自由发挥。
+
+如果 `brief.json` 中有 `conflict` 或 `open_question`，任务会进入 `waiting_for_user`，并写出 `confirmation.md`。同一群聊里的后续确认消息会写入 `control.jsonl`，后续继续执行或重试时 Codex 会读取这些确认信息。
 
 重试一个 GolemBot office 任务：
 

@@ -13,6 +13,7 @@ from bridge.lark_im import build_delivery_markdown, reply_to_message
 from bridge.task_binding import get_task_binding
 from bridge.task_binding import build_golembot_session_key
 from bridge.task_control import append_control_command
+from bridge.task_protocol import read_status
 
 Forwarder = Callable[..., dict[str, Any]]
 Replier = Callable[[str, str, str, bool], dict[str, Any]]
@@ -54,6 +55,22 @@ def dispatch_event_via_golembot(
             "reply_markdown": reply_markdown,
             "reply": reply,
         }
+    waiting_result = _append_to_waiting_task_if_available(tasks_root, session_key, parsed)
+    if waiting_result is not None:
+        reply_markdown = "已记录这条确认。我会在继续执行时把它纳入当前任务。"
+        reply = replier(
+            parsed.message_id,
+            reply_markdown,
+            f"{parsed.message_id}-golembot-waiting-confirmation",
+            not execute_reply,
+        )
+        return {
+            **waiting_result,
+            "session_key": session_key,
+            "message_id": parsed.message_id,
+            "reply_markdown": reply_markdown,
+            "reply": reply,
+        }
 
     if publish and _is_office_deliverable(parsed.text):
         task_id = _task_id(parsed.message_id)
@@ -68,8 +85,12 @@ def dispatch_event_via_golembot(
             publish=False,
             conversation_context=_conversation_context(parsed, context_reader),
         )
-        publish_result = publisher(Path(str(task_result["task_dir"])))
-        reply_markdown = build_delivery_markdown(publish_result["artifacts"])
+        publish_result = None
+        if task_result.get("state") == "waiting_for_user":
+            reply_markdown = str(task_result.get("reply_markdown") or "我已完成群聊信息汇总，但需要你确认后再继续。")
+        else:
+            publish_result = publisher(Path(str(task_result["task_dir"])))
+            reply_markdown = build_delivery_markdown(publish_result["artifacts"])
         reply = replier(
             parsed.message_id,
             reply_markdown,
@@ -134,6 +155,39 @@ def _append_to_active_turn_if_available(
             "sender_id": parsed.sender_open_id,
             "codex_thread_id": codex_thread_id,
             "active_turn_id": active_turn_id,
+        },
+        operator="feishu",
+    )
+    return {"task_id": str(task_id), "control": command}
+
+
+def _append_to_waiting_task_if_available(
+    tasks_root: Path,
+    session_key: str,
+    parsed: Any,
+) -> dict[str, Any] | None:
+    binding = get_task_binding(tasks_root / "task-bindings.json", session_key)
+    if not binding:
+        return None
+    task_id = binding.get("active_task_id")
+    if not task_id:
+        return None
+    task_dir = tasks_root / str(task_id)
+    try:
+        status = read_status(task_dir)
+    except Exception:
+        return None
+    if status.get("state") != "waiting_for_user":
+        return None
+    command = append_control_command(
+        task_dir,
+        "confirm_instruction",
+        {
+            "text": parsed.text,
+            "message_id": parsed.message_id,
+            "session_key": session_key,
+            "chat_id": parsed.chat_id,
+            "sender_id": parsed.sender_open_id,
         },
         operator="feishu",
     )

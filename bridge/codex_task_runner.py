@@ -14,10 +14,12 @@ REQUIRED_CODEX_OUTPUTS = ("plan.json", "document.md", "slides.md", "whiteboard.m
 def build_codex_task_prompt(task_dir: Path) -> str:
     task_path = _display_path(task_dir / "request.md")
     brief_instruction = _brief_instruction(task_dir)
+    control_instruction = _control_instruction(task_dir)
     return f"""You are generating local office artifacts for an IM-Collab task.
 
 Read `{task_path}`.
 {brief_instruction}
+{control_instruction}
 
 Use Codex + superpowers as the planning and generation method. Do not call Feishu, lark-cli, Presenton, network APIs, or external office tools in this step. Python delivery code will publish the artifacts later.
 
@@ -59,6 +61,23 @@ This task includes a source-grounded group brief:
 - `{_display_path(brief_md)}`
 
 Use `brief.json` as the primary evidence layer for group-chat requirements. Do not add requirements that are not present in the brief or `request.md`. If the brief marks conflicts or open questions, preserve them in `document.md`, `slides.md`, and `next_steps` instead of silently resolving them.
+"""
+
+
+def _control_instruction(task_dir: Path) -> str:
+    control_log = task_dir / "control.jsonl"
+    if not control_log.exists():
+        return ""
+    preview = control_log.read_text(encoding="utf-8").strip()
+    return f"""
+
+This task includes latest operator and group-chat instructions in `{_display_path(control_log)}`. Read them before generating artifacts. These instructions may confirm a previously waiting group brief or add requirements.
+
+Current control log:
+
+```jsonl
+{preview}
+```
 """
 
 
