@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from bridge.group_briefing import build_group_brief, render_group_brief_markdown, validate_group_brief
+from bridge.group_briefing import (
+    build_confirmation_card,
+    build_group_brief,
+    render_group_brief_markdown,
+    validate_group_brief,
+)
 
 
 def test_build_group_brief_creates_source_grounded_annotations() -> None:
@@ -72,3 +77,22 @@ def test_render_group_brief_markdown_keeps_message_ids_visible() -> None:
     assert "## 旁批标注" in markdown
     assert "引用: om_1" in markdown
     assert "## 总汇总区" in markdown
+
+
+def test_build_confirmation_card_contains_start_action_and_message_refs() -> None:
+    brief = build_group_brief(
+        chat_id="oc_group",
+        messages=[
+            {"message_id": "om_1", "sender": "老师", "content": "PPT 不超过 8 页。"},
+            {"message_id": "om_2", "sender": "同学", "content": "PPT 可以 10 页？"},
+        ],
+    )
+
+    card = build_confirmation_card(brief, task_id="im-om_123")
+
+    assert card["config"]["wide_screen_mode"] is True
+    assert card["header"]["title"]["content"] == "请确认群聊需求"
+    assert "PPT 页数出现多个版本" in str(card)
+    assert "om_1" in str(card)
+    assert "om_2" in str(card)
+    assert {"tag": "button", "text": {"tag": "plain_text", "content": "开始执行"}, "type": "primary", "value": {"action": "start_task", "task_id": "im-om_123"}} in card["elements"]

@@ -341,6 +341,8 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 
 如果用户在同一群聊里明确说“开始执行 / 开始生成 / 确认开始”，Bridge 会复用原 `task_id`，读取已经记录的确认信息，继续生成并发布产物。
 
+等待确认的任务还会写出 `confirmation_card.json`，包含“开始执行”和“补充要求”按钮动作值。当前默认回复仍走 Markdown；接入飞书 interactive card 发送和回调时复用这个 payload。
+
 重试一个 GolemBot office 任务：
 
 ```bash

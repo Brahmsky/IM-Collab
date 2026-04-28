@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import json
 
-from bridge.lark_im import build_delivery_markdown, build_list_messages_args, list_chat_messages, build_reply_args, reply_to_message
+from pathlib import Path
+
+from bridge.lark_im import (
+    build_delivery_markdown,
+    build_list_messages_args,
+    build_reply_args,
+    build_reply_card_args,
+    list_chat_messages,
+    reply_to_message,
+)
 
 
 def test_build_reply_args_uses_markdown_and_idempotency_key() -> None:
@@ -25,6 +34,30 @@ def test_build_reply_args_uses_markdown_and_idempotency_key() -> None:
         "完成了",
         "--idempotency-key",
         "task-123",
+        "--dry-run",
+    ]
+
+
+def test_build_reply_card_args_uses_card_file() -> None:
+    args = build_reply_card_args(
+        message_id="om_123",
+        card_path=Path("tasks/t1/confirmation_card.json"),
+        idempotency_key="task-123-card",
+        dry_run=True,
+    )
+
+    assert args == [
+        "lark-cli",
+        "im",
+        "+messages-reply",
+        "--as",
+        "bot",
+        "--message-id",
+        "om_123",
+        "--card",
+        "@tasks/t1/confirmation_card.json",
+        "--idempotency-key",
+        "task-123-card",
         "--dry-run",
     ]
 

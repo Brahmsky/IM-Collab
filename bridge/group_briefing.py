@@ -117,6 +117,47 @@ def render_confirmation_markdown(brief: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def build_confirmation_card(brief: dict[str, Any], task_id: str) -> dict[str, Any]:
+    uncertain = [
+        annotation
+        for annotation in brief.get("annotations", [])
+        if annotation.get("type") in {"conflict", "open_question"} or annotation.get("needs_confirmation") is True
+    ]
+    elements: list[dict[str, Any]] = [
+        {
+            "tag": "markdown",
+            "content": "我已完成群聊旁批汇总，但发现以下信息需要确认，暂不开始生成文档/PPT/白板。",
+        }
+    ]
+    for annotation in uncertain:
+        refs = ", ".join(annotation["evidence_message_ids"])
+        elements.append({"tag": "markdown", "content": f"- {annotation['claim']}\\n  引用: {refs}"})
+    elements.extend(
+        [
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "开始执行"},
+                "type": "primary",
+                "value": {"action": "start_task", "task_id": task_id},
+            },
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "补充要求"},
+                "type": "default",
+                "value": {"action": "append_requirement", "task_id": task_id},
+            },
+        ]
+    )
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "blue",
+            "title": {"tag": "plain_text", "content": "请确认群聊需求"},
+        },
+        "elements": elements,
+    }
+
+
 def _normalize_message(index: int, message: dict[str, Any]) -> dict[str, Any]:
     message_id = str(message.get("message_id") or message.get("id") or f"msg_{index:03d}")
     sender = str(message.get("sender") or message.get("sender_id") or message.get("sender_name") or "unknown")

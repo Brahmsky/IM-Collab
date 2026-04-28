@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+from pathlib import Path
 from typing import Any, Callable
 
 from bridge.lark_docs import _extract_json
@@ -25,6 +26,30 @@ def build_reply_args(
         message_id,
         "--markdown",
         markdown,
+        "--idempotency-key",
+        _safe_idempotency_key(idempotency_key),
+    ]
+    if dry_run:
+        args.append("--dry-run")
+    return args
+
+
+def build_reply_card_args(
+    message_id: str,
+    card_path: Path,
+    idempotency_key: str,
+    dry_run: bool = False,
+) -> list[str]:
+    args = [
+        "lark-cli",
+        "im",
+        "+messages-reply",
+        "--as",
+        "bot",
+        "--message-id",
+        message_id,
+        "--card",
+        f"@{card_path.as_posix()}",
         "--idempotency-key",
         _safe_idempotency_key(idempotency_key),
     ]

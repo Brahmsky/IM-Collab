@@ -110,6 +110,9 @@ def test_run_golembot_office_task_waits_for_user_when_group_brief_has_conflicts(
     assert "需要确认" in status["error"]
     assert not (task_dir / "artifacts.json").exists()
     assert (task_dir / "confirmation.md").exists()
+    card = json.loads((task_dir / "confirmation_card.json").read_text(encoding="utf-8"))
+    assert card["header"]["title"]["content"] == "请确认群聊需求"
+    assert card["elements"][-2]["value"] == {"action": "start_task", "task_id": "waiting-brief-task"}
     assert "PPT 页数出现多个版本" in result["reply_markdown"]
     assert result["state"] == "waiting_for_user"
 

@@ -7,7 +7,7 @@ from typing import Any
 from bridge.codex_app_server_task_runner import AppServerTaskBackend, run_codex_app_server_task
 from bridge.codex_task_runner import run_codex_task
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
-from bridge.group_briefing import brief_needs_confirmation, build_group_brief
+from bridge.group_briefing import brief_needs_confirmation, build_confirmation_card, build_group_brief
 from bridge.group_briefing import render_confirmation_markdown, render_group_brief_markdown
 from bridge.lark_im import build_delivery_markdown
 from bridge.local_codex_smoke import run_local_smoke
@@ -54,6 +54,10 @@ def run_golembot_office_task(
     if brief is not None and brief_needs_confirmation(brief):
         reply_markdown = render_confirmation_markdown(brief)
         (task_dir / "confirmation.md").write_text(reply_markdown, encoding="utf-8")
+        (task_dir / "confirmation_card.json").write_text(
+            _json_dumps(build_confirmation_card(brief, task_id=task_id)),
+            encoding="utf-8",
+        )
         write_status(task_dir, "waiting_for_user", error="群聊旁批汇总发现冲突或待确认问题，需要确认后再生成。")
         return {
             "task_id": task_id,
