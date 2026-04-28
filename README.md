@@ -211,7 +211,7 @@ rtk .venv/bin/python scripts/check_tools.py
 
 ```bash
 rtk lark-cli event +subscribe \
-  --event-types im.message.receive_v1 \
+  --event-types im.message.receive_v1,card.action.trigger \
   --compact \
   --quiet \
   --output-dir events/im
@@ -248,7 +248,8 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 - `--generator codex`：一次性 `codex exec` 兼容路径。
 - `--generator app-server`：Codex 持久 session 主路径。
   同一 `session-key` 会复用已有 `codex_thread_id`，运行中会把 `active_turn_id` 写到 `tasks/task-bindings.json`。
-  此时同一飞书会话的新消息会追加到 `tasks/<task_id>/control.jsonl`，runner 轮询后调用 `turn/steer`。
+此时同一飞书会话的新消息会追加到 `tasks/<task_id>/control.jsonl`，runner 轮询后调用 `turn/steer`。
+- 确认卡片按钮会产生 `card.action.trigger`，Bridge 会写入 `control.jsonl`，并在“开始执行”动作中恢复 waiting task。
 
 ## 8. 手动跑一个任务
 
@@ -344,7 +345,11 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 
 等待确认的任务还会写出 `confirmation_card.json`，包含“开始执行”和“补充要求”按钮动作值。事件分发会优先用飞书 interactive 消息发送这张卡片；如果卡片文件不存在，才回退到 Markdown。
 
+飞书卡片按钮回调会作为 `card.action.trigger` 事件进入同一个 consumer。`start_task` 会恢复对应的 waiting task；其他卡片动作会先进入 `control.jsonl`，供后续任务继续执行时读取。
+
 完成发布的任务还会写出 `delivery_card.json`，包含文档和演示稿按钮。事件分发和手动 `deliver_task_to_feishu` 会优先发送这张 interactive 卡片；Markdown 交付文本仍保留为回退和控制台展示。
+
+后续用户在同一活跃会话里继续发消息时，消息会优先作为运行中任务的追加指令；任务已完成后的修改需求会复用同一 Codex thread，并在 prompt 中带上已有 `artifacts.json`，尽量围绕原文档/Slides 修改而不是创建无关副本。
 
 重试一个 GolemBot office 任务：
 
