@@ -21,6 +21,17 @@ class ImEvent:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class CardActionEvent:
+    message_id: str
+    chat_id: str
+    sender_open_id: str
+    action: str
+    task_id: str
+    value: dict[str, Any]
+    raw: dict[str, Any]
+
+
 def parse_im_event(payload: dict[str, Any]) -> ImEvent:
     if payload.get("type") == "im.message.receive_v1" or "message_id" in payload:
         message_id = _require(payload, "message_id")
@@ -51,6 +62,38 @@ def parse_im_event(payload: dict[str, Any]) -> ImEvent:
         text=text,
         raw=payload,
     )
+
+
+def parse_card_action_event(payload: dict[str, Any]) -> CardActionEvent:
+    if payload.get("type") == "card.action.trigger":
+        value = _card_value(payload.get("action", {}))
+        return CardActionEvent(
+            message_id=str(payload.get("message_id", "")),
+            chat_id=str(payload.get("chat_id", "")),
+            sender_open_id=str(payload.get("open_id") or payload.get("sender_id") or ""),
+            action=str(value.get("action", "")),
+            task_id=str(value.get("task_id", "")),
+            value=value,
+            raw=payload,
+        )
+
+    event = payload.get("event", payload)
+    value = _card_value(event.get("action", {}))
+    context = event.get("context", {})
+    operator = event.get("operator", {})
+    return CardActionEvent(
+        message_id=str(context.get("open_message_id", "")),
+        chat_id=str(context.get("open_chat_id", "")),
+        sender_open_id=str(operator.get("open_id", "")),
+        action=str(value.get("action", "")),
+        task_id=str(value.get("task_id", "")),
+        value=value,
+        raw=payload,
+    )
+
+
+def is_card_action_event(payload: dict[str, Any]) -> bool:
+    return payload.get("type") == "card.action.trigger" or payload.get("header", {}).get("event_type") == "card.action.trigger"
 
 
 def create_task_from_event(payload: dict[str, Any], tasks_root: Path) -> Path:
@@ -101,6 +144,12 @@ def _extract_text(message: dict[str, Any]) -> str:
         if isinstance(decoded.get("content"), str):
             return decoded["content"]
     return json.dumps(decoded, ensure_ascii=False)
+
+
+def _card_value(action: Any) -> dict[str, Any]:
+    if isinstance(action, dict) and isinstance(action.get("value"), dict):
+        return action["value"]
+    return {}
 
 
 def _require(mapping: dict[str, Any], key: str) -> str:
