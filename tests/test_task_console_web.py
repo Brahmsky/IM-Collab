@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from bridge.task_console_web import handle_console_action, render_console_html
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "task-1" / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "running",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_group": {
+                "session_key": "feishu:oc_group",
+                "active_task_id": "task-1",
+                "codex_thread_id": "thread_123",
+                "active_turn_id": "turn_456",
+            }
+        },
+    )
+
+    html = render_console_html(tasks_root, tmp_path / "events")
+
+    assert "IM-Collab Agent Console" in html
+    assert "task-1" in html
+    assert "running" in html
+    assert "thread_123" in html
+    assert "turn_456" in html
+    assert 'name="action" value="append"' in html
+    assert 'name="action" value="interrupt"' in html
+    assert 'name="action" value="ack"' in html
+    assert 'name="action" value="retry"' in html
+
+
+def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+
+    assert handle_console_action(tasks_root, {"action": "append", "task_id": "task-1", "text": "补充"}) == (
+        "append queued for task-1"
+    )
+    assert handle_console_action(tasks_root, {"action": "interrupt", "task_id": "task-1"}) == (
+        "interrupt queued for task-1"
+    )
+    assert handle_console_action(tasks_root, {"action": "ack", "task_id": "task-1", "note": "已确认"}) == (
+        "ack saved for task-1"
+    )
+
+    commands = [
+        json.loads(line)
+        for line in (tasks_root / "task-1" / "control.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert commands[0]["type"] == "append_instruction"
+    assert commands[0]["payload"]["text"] == "补充"
+    assert commands[1]["type"] == "interrupt"
+    assert "已确认" in (tasks_root / "task-1" / "ack.json").read_text(encoding="utf-8")
+
+
+def test_handle_console_action_retries_task(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    task_dir.mkdir(parents=True)
+    seen: dict[str, object] = {}
+
+    def fake_retry(task_dir_arg: Path, generator: str = "app-server", publish: bool = False):
+        seen["task_dir"] = task_dir_arg
+        seen["generator"] = generator
+        seen["publish"] = publish
+        return {"task_id": task_dir_arg.name}
+
+    message = handle_console_action(
+        tasks_root,
+        {"action": "retry", "task_id": "task-1", "generator": "local", "publish": "1"},
+        retry=fake_retry,
+    )
+
+    assert message == "retry started for task-1"
+    assert seen == {"task_dir": task_dir, "generator": "local", "publish": True}
