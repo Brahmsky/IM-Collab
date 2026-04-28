@@ -263,3 +263,50 @@ def test_run_golembot_office_task_exposes_active_turn_while_app_server_runs(tmp_
     assert binding_during_wait["active_turn_id"] == "turn_live"
     assert final_binding["codex_thread_id"] == "thread_live"
     assert final_binding["active_turn_id"] is None
+
+
+def test_resumed_waiting_task_includes_control_confirmations_in_request(tmp_path: Path) -> None:
+    task_dir = tmp_path / "waiting-task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "request.md").write_text("# Existing request\n", encoding="utf-8")
+    (task_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "task_id": "waiting-task",
+                "state": "waiting_for_user",
+                "created_at": "2026-04-28T01:00:00+00:00",
+                "updated_at": "2026-04-28T01:00:00+00:00",
+                "error": "需要确认",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:01:00+00:00",
+                "type": "card_action",
+                "operator": "feishu_card",
+                "payload": {"action": "start_task", "value": {"task_id": "waiting-task"}},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    run_golembot_office_task(
+        message="开始执行",
+        session_key="feishu:oc_group",
+        chat_id="oc_group",
+        sender_id="ou_requester",
+        tasks_root=tmp_path,
+        task_id="waiting-task",
+        generator="local",
+        publish=False,
+    )
+
+    request = (task_dir / "request.md").read_text(encoding="utf-8")
+    assert "## Confirmation Controls" in request
+    assert "card_action" in request
+    assert "start_task" in request

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from bridge.group_briefing import render_confirmation_markdown, render_group_bri
 from bridge.lark_im import build_delivery_markdown
 from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_binding import bind_active_task, clear_active_task
+from bridge.task_control import read_control_commands
 from bridge.task_protocol import create_task, read_artifacts, write_status
 
 
@@ -41,6 +43,7 @@ def run_golembot_office_task(
         brief = _write_group_brief(task_dir, chat_id, conversation_context or [])
     else:
         brief = None
+        _append_confirmation_controls_to_request(task_dir)
 
     binding = bind_active_task(
         bindings_path,
@@ -181,6 +184,25 @@ def _write_group_brief(task_dir: Path, chat_id: str, conversation_context: list[
     return brief
 
 
+def _append_confirmation_controls_to_request(task_dir: Path) -> None:
+    confirmation_commands = [
+        command
+        for command in read_control_commands(task_dir)
+        if command.get("type") in {"confirm_instruction", "card_action"}
+    ]
+    if not confirmation_commands:
+        return
+    request_path = task_dir / "request.md"
+    current = request_path.read_text(encoding="utf-8")
+    if "## Confirmation Controls" in current:
+        return
+    lines = ["", "## Confirmation Controls"]
+    for command in confirmation_commands:
+        payload = json.dumps(command.get("payload", {}), ensure_ascii=False)
+        lines.append(f"- {command.get('type')}: {payload}")
+    request_path.write_text(current.rstrip() + "\n" + "\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _conversation_context_markdown(messages: list[dict[str, Any]]) -> str:
     if not messages:
         return ""
@@ -205,8 +227,6 @@ This task includes `brief.json` and `brief.md`. Treat them as the evidence layer
 
 
 def _json_dumps(value: Any) -> str:
-    import json
-
     return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
 
 
