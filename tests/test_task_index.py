@@ -86,6 +86,31 @@ def test_build_task_index_includes_failed_task_error(tmp_path: Path) -> None:
     assert index[0].document_url == ""
 
 
+def test_task_index_shows_waiting_confirmation_controls(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "waiting_for_user",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps({"type": "card_action", "payload": {"action": "start_task"}}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    [task] = build_task_index(tasks_root)
+
+    assert task.pending_controls == 1
+    assert task.control_count == 1
+    assert task.last_control_type == "card_action"
+
+
 def test_summarize_events_counts_latest_event_files(tmp_path: Path) -> None:
     event_dir = tmp_path / "events"
     (event_dir / "im.message.receive_v1_a.json").parent.mkdir(parents=True)

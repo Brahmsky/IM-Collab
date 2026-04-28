@@ -34,6 +34,10 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
             }
         },
     )
+    (tasks_root / "task-1" / "control.jsonl").write_text(
+        json.dumps({"type": "card_action", "payload": {"action": "start_task"}}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
     html = render_console_html(tasks_root, tmp_path / "events")
 
@@ -42,6 +46,8 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
     assert "running" in html
     assert "thread_123" in html
     assert "turn_456" in html
+    assert "last control" in html
+    assert "card_action" in html
     assert 'name="action" value="append"' in html
     assert 'name="action" value="interrupt"' in html
     assert 'name="action" value="ack"' in html

@@ -21,6 +21,8 @@ class TaskSummary:
     codex_thread_id: str
     active_turn_id: str
     control_count: int
+    pending_controls: int
+    last_control_type: str
     ack_operator: str
     ack_note: str
     path: Path
@@ -59,6 +61,8 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
     artifacts = _read_json(task_dir / "artifacts.json") if (task_dir / "artifacts.json").exists() else {}
     task_id = str(status.get("task_id") or task_dir.name)
     binding = _binding_for_task(bindings, task_id)
+    controls = _read_control_commands(task_dir)
+    control_count = len(controls)
     return TaskSummary(
         task_id=task_id,
         state=str(status.get("state") or "unknown"),
@@ -72,7 +76,9 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
         session_key=str(binding.get("session_key") or ""),
         codex_thread_id=str(binding.get("codex_thread_id") or ""),
         active_turn_id=str(binding.get("active_turn_id") or ""),
-        control_count=_control_count(task_dir),
+        control_count=control_count,
+        pending_controls=control_count,
+        last_control_type=str(controls[-1].get("type") or "") if controls else "",
         ack_operator=_ack_value(task_dir, "operator"),
         ack_note=_ack_value(task_dir, "note"),
         path=task_dir,
@@ -109,11 +115,17 @@ def _binding_for_task(bindings: dict[str, dict[str, Any]], task_id: str) -> dict
     return {}
 
 
-def _control_count(task_dir: Path) -> int:
+def _read_control_commands(task_dir: Path) -> list[dict[str, Any]]:
     control_path = task_dir / "control.jsonl"
     if not control_path.exists():
-        return 0
-    return sum(1 for line in control_path.read_text(encoding="utf-8").splitlines() if line.strip())
+        return []
+    commands = []
+    for line in control_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            command = json.loads(line)
+            if isinstance(command, dict):
+                commands.append(command)
+    return commands
 
 
 def _ack_value(task_dir: Path, key: str) -> str:

@@ -85,6 +85,7 @@ def _task_card(task: Any) -> str:
         ("thread", task.codex_thread_id),
         ("turn", task.active_turn_id),
         ("control", f"{task.control_count} queued" if task.control_count else ""),
+        ("last control", task.last_control_type),
         ("ack", task.ack_operator),
         ("document", task.document_url),
         ("slides", task.slides_url),
