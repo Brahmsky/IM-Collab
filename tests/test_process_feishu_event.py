@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from scripts.process_feishu_event import process_event_file
+from bridge.task_binding import get_task_binding
+
+
+def test_process_event_file_creates_task_and_dry_run_reply(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps(
+            {
+                "event": {
+                    "message": {
+                        "message_id": "om_123",
+                        "chat_id": "oc_456",
+                        "chat_type": "group",
+                        "message_type": "text",
+                        "content": "{\"text\":\"生成项目方案\"}",
+                    },
+                    "sender": {"sender_id": {"open_id": "ou_789"}},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen_args: list[str] = []
+
+    def fake_runner(args: list[str]) -> str:
+        seen_args.extend(args)
+        return "=== Dry Run ===\n" + json.dumps({"api": [{"url": "/open-apis/im/v1/messages/om_123/reply"}]})
+
+    result = process_event_file(event_path, tmp_path / "tasks", dry_run_reply=True, runner=fake_runner)
+
+    assert result["task_id"] == "im-om_123"
+    assert Path(result["task_dir"]).exists()
+    assert result["reply"]["dry_run"] is True
+    assert "--message-id" in seen_args
+    assert "om_123" in seen_args
+    binding = get_task_binding(tmp_path / "tasks" / "task-bindings.json", "feishu:oc_456")
+    assert binding["active_task_id"] == "im-om_123"
+
+
+def test_process_event_file_is_idempotent_for_same_message(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_123",
+                "chat_id": "oc_456",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "生成项目方案",
+                "sender_id": "ou_789",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_runner(args: list[str]) -> str:
+        return "=== Dry Run ===\n" + json.dumps({"api": [{"url": "/open-apis/im/v1/messages/om_123/reply"}]})
+
+    first = process_event_file(event_path, tmp_path / "tasks", dry_run_reply=True, runner=fake_runner)
+    second = process_event_file(event_path, tmp_path / "tasks", dry_run_reply=True, runner=fake_runner)
+
+    assert first["task_dir"] == second["task_dir"]
+
+
+def test_process_event_file_can_run_delivery_flow(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_123",
+                "chat_id": "oc_456",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "生成项目方案",
+                "sender_id": "ou_789",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_runner(args: list[str], input_text: str | None = None) -> str:
+        command = " ".join(args[:3])
+        if command == "lark-cli im +messages-reply":
+            return "=== Dry Run ===\n" + json.dumps({"api": [{"url": "/reply"}]})
+        if command == "lark-cli docs +create":
+            return json.dumps({"ok": True, "data": {"document": {"document_id": "doc_123", "url": "doc_url"}}})
+        if command == "lark-cli slides +create":
+            return json.dumps({"ok": True, "data": {"xml_presentation_id": "s_123", "url": "slides_url", "slides_added": 8}})
+        if command == "lark-cli docs +update":
+            return json.dumps({"ok": True, "data": {"document": {"new_blocks": [{"block_id": "b_123", "block_token": "wb_123", "block_type": "whiteboard"}]}}})
+        if command == "lark-cli whiteboard +update":
+            return json.dumps({"ok": True, "data": {"created_node_id": "t1:2"}})
+        raise AssertionError(args)
+
+    result = process_event_file(
+        event_path,
+        tmp_path / "tasks",
+        dry_run_reply=True,
+        run_delivery=True,
+        runner=fake_runner,
+    )
+
+    assert result["delivery"]["artifacts"]["document"]["remote"]["url"] == "doc_url"
+    assert result["reply"] is None
+    binding = get_task_binding(tmp_path / "tasks" / "task-bindings.json", "feishu:oc_456")
+    assert binding["active_task_id"] is None
+    assert binding["last_task_id"] == "im-om_123"
+
+
+def test_process_event_file_can_use_injected_codex_generator(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_123",
+                "chat_id": "oc_456",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "生成项目方案",
+                "sender_id": "ou_789",
+            }
+        ),
+        encoding="utf-8",
+    )
+    generated: list[Path] = []
+
+    def fake_generator(task_dir: Path) -> None:
+        generated.append(task_dir)
+        (task_dir / "plan.json").write_text('{"task_id":"im-om_123","steps":[]}', encoding="utf-8")
+        (task_dir / "document.md").write_text("# Doc\n", encoding="utf-8")
+        (task_dir / "slides.md").write_text("# Deck\n\n## Slide 1: Cover\nIntro\n", encoding="utf-8")
+        (task_dir / "whiteboard.mmd").write_text("flowchart TD\nA-->B\n", encoding="utf-8")
+        (task_dir / "artifacts.json").write_text(
+            json.dumps(
+                {
+                    "task_id": "im-om_123",
+                    "document": {"type": "markdown", "path": (task_dir / "document.md").as_posix()},
+                    "slides": {"type": "markdown", "path": (task_dir / "slides.md").as_posix()},
+                    "whiteboard": {"type": "mermaid", "path": (task_dir / "whiteboard.mmd").as_posix()},
+                    "summary": "Generated by injected Codex.",
+                    "next_steps": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def fake_runner(args: list[str], input_text: str | None = None) -> str:
+        command = " ".join(args[:3])
+        if command == "lark-cli im +messages-reply":
+            return "=== Dry Run ===\n" + json.dumps({"api": [{"url": "/reply"}]})
+        if command == "lark-cli docs +create":
+            return json.dumps({"ok": True, "data": {"document": {"document_id": "doc_123", "url": "doc_url"}}})
+        if command == "lark-cli slides +create":
+            return json.dumps({"ok": True, "data": {"xml_presentation_id": "s_123", "url": "slides_url", "slides_added": 1}})
+        if command == "lark-cli docs +update":
+            return json.dumps({"ok": True, "data": {"document": {"new_blocks": [{"block_id": "b_123", "block_token": "wb_123", "block_type": "whiteboard"}]}}})
+        if command == "lark-cli whiteboard +update":
+            return json.dumps({"ok": True, "data": {"created_node_id": "t1:2"}})
+        raise AssertionError(args)
+
+    result = process_event_file(
+        event_path,
+        tmp_path / "tasks",
+        dry_run_reply=True,
+        run_delivery=True,
+        generator="codex",
+        codex_generator=fake_generator,
+        runner=fake_runner,
+    )
+
+    assert generated == [tmp_path / "tasks" / "im-om_123"]
+    assert result["delivery"]["artifacts"]["summary"].startswith("Generated by injected Codex.")

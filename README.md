@@ -1,53 +1,86 @@
 # IM-Collab
 
-一个面向比赛场景的 Agent-Pilot 办公协同项目：
+IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智能闭环** 的实现仓库。
 
-- 输入：飞书 IM 中的自然语言需求
-- 编排：Codex + superpowers（唯一主编排层）
-- 输出：文档、演示稿、白板等办公产物
-- 回传：将交付结果回到飞书会话
+项目不重写 IM、文档、PPT、白板，也不自研 Agent 框架。我们复用飞书开放平台、lark-cli、Codex、superpowers、MCP/CLI 工具，把它们组织成一个可演示、可部署的办公协同闭环：
 
-## 这套项目解决什么问题
+```text
+飞书群聊/单聊
+  -> lark-cli WebSocket 收事件
+  -> Python Bridge 创建 tasks/<task_id>
+  -> Codex + superpowers 规划、执行、验收
+  -> lark-cli / Feishu API / Presenton 生成文档、Slides、白板
+  -> artifacts.json / status.json 记录交付状态
+  -> Python Bridge 回传飞书消息
+```
 
-把传统的“聊天讨论 -> 手工整理文档 -> 手工做 PPT -> 手工回传”变成可自动执行的任务闭环。
+一句话：**用户在飞书里说目标，Agent 驱动办公工具产出文档、演示稿、白板并回传。**
 
-核心边界：
+## 1. 先看这个
 
-- Python Bridge 负责消息入口、任务目录、状态与产物协议、外部工具调用
-- Codex + superpowers 负责规划、追问、执行、验收
-- 飞书、lark-cli、Presenton、GolemBot 都是被调用的工具层
+### 当前能跑什么
 
-## 给零基础同学的上手路径
+- 本地 smoke：不依赖飞书，验证任务协议。
+- 飞书群聊：bot 进群后，@ bot 可触发任务。
+- 真实交付：可创建飞书文档、Slides、白板并回群。
+- 控制台快照：可查看 `tasks/` 和 `events/` 状态。
+- Codex 后端：已有 `codex exec` 路径，也有 `codex app-server` 持久 session spike。
 
-如果你对配置和部署完全不熟，按下面顺序做就行：
+### 当前还缺什么
 
-1. 跑通本地离线 Smoke（不依赖飞书账号）
-2. 检查工具可用性（Codex/lark-cli/skills）
-3. 配置飞书环境变量，跑事件监听和消费
-4. 可选：接入 GolemBot 网关，走比赛演示链路
+- `app-server` 还不是默认主后端。
+- 同一飞书会话继续同一个 Codex thread 的续聊还没完整接入。
+- GUI 还只是只读快照，不能打断、追加指令、重试。
+- 语音、离线、冲突合并、富媒体布局属于后续加分项。
 
-## 目录速览
+### 和赛题是否对齐
 
-- `bridge/`: 任务协议、事件处理、投递与交付核心逻辑
-- `scripts/`: 启动脚本和演示脚本
-- `skills/`: 办公场景技能
-- `tasks/`: 任务目录（运行时产物，不提交）
-- `events/`: 事件文件目录
-- `tests/`: 单元测试
-- `docs/`: 参考文档与设计说明
+对齐。赛题要求 IM 入口、Agent 主驾驶、文档、PPT 或自由画布、多端协同、GUI 辅助。赛题没有要求必须用 LangGraph，也没有禁止使用 Codex、飞书、开源工具或现成 CLI。我们的风险不是“用了轮子”，而是要避免看起来像简单脚本串 API。所以后续重点是：持久 session、续聊澄清、状态可观测、人工接管、真实办公产物。
 
-## 0. 环境准备
+## 2. 目录
 
-### 0.1 系统依赖
+```text
+AGENTS.md                 Codex 项目规则：边界、任务协议、开发规则
+落地方案.md               赛题要求与方案分析
+bridge/                   Python Bridge 核心逻辑
+scripts/                  启动、监听、消费、控制台脚本
+skills/                   项目本地办公 skill
+docs/                     调研、设计、后续计划
+examples/                 本地演示输入
+tests/                    单元测试
+tasks/                    运行时任务目录，不提交
+events/                   运行时事件目录，不提交
+```
 
-建议 Linux/macOS，推荐：
+最常看的文件：
+
+- `bridge/golembot_office_loop.py`：办公任务主循环。
+- `bridge/codex_task_runner.py`：`codex exec` 路径。
+- `bridge/codex_app_server.py`：Codex app-server JSON-RPC 客户端。
+- `bridge/codex_app_server_task_runner.py`：app-server 任务 runner。
+- `bridge/feishu_delivery.py`：发布本地产物到飞书。
+- `scripts/run_event_consumer.py`：消费飞书事件。
+- `scripts/run_golembot_office_task.py`：手动跑一个任务。
+- `scripts/task_console.py`：查看任务状态。
+
+## 3. 环境
+
+推荐：**Windows + WSL2 Ubuntu 22.04/24.04**。
+
+Windows 原生理论上能跑测试和 smoke，但飞书监听、PTY、Codex app-server、长驻进程更建议放 WSL 里跑。
+
+需要：
 
 - Python 3.11+
 - Node.js 18+
 - npm
 - Git
+- Codex CLI
+- lark-cli
 
-### 0.2 创建 Python 虚拟环境
+## 4. 安装
+
+以下命令在仓库根目录执行。项目内部开发命令建议加 `rtk`。
 
 ```bash
 rtk python3 -m venv .venv
@@ -55,189 +88,320 @@ rtk .venv/bin/pip install -U pip
 rtk .venv/bin/pip install -r requirements-dev.txt
 ```
 
-### 0.3 安装关键 CLI
-
-1) Codex CLI（需你本机已可用 `codex` 命令）
-
-2) 飞书 CLI：
+安装飞书 CLI 和 skills：
 
 ```bash
 rtk npm i -g @larksuite/cli
-```
-
-3) 安装飞书 skills：
-
-```bash
 rtk npx skills add larksuite/cli -y -g
 ```
 
-4) 可选：GolemBot（用于网关链路）
+确认 Codex：
 
 ```bash
-rtk npm exec --yes --package golembot@0.46.0 -- golembot --version
+rtk codex --version
+rtk codex app-server --help
 ```
 
-## 1. 本地离线 Smoke（先做这个）
+## 5. 配飞书 Bot
 
-这个模式不依赖飞书密钥，适合第一次上手。
+队友第一次接项目时，最容易卡在这里。按下面顺序做。
+
+### 5.1 创建飞书应用
+
+进入飞书开放平台，创建一个企业自建应用：
+
+1. 打开飞书开放平台开发者后台。
+2. 创建企业自建应用。
+3. 记录 `App ID` 和 `App Secret`，不要提交到仓库。
+4. 在应用能力里启用机器人能力。
+5. 设置应用可用范围，至少覆盖测试群成员。
+
+### 5.2 配 lark-cli 应用信息
+
+首次配置：
+
+```bash
+rtk lark-cli config init --new
+```
+
+按提示填入：
+
+- App ID
+- App Secret
+- 租户/域名相关配置
+
+检查：
+
+```bash
+rtk lark-cli auth status
+rtk lark-cli doctor
+```
+
+说明：
+
+- 事件监听和 bot 发消息主要走 bot 身份，依赖 App ID / App Secret。
+- 如果要访问用户个人云空间等资源，才需要 user 身份授权。
+- 不要把 App Secret 写进 README、提交记录或 issue。
+
+### 5.3 开权限
+
+至少需要这些方向的权限。具体 scope 以 `lark-cli doctor` 和报错里的 `permission_violations` 为准：
+
+- 接收消息事件：`im:message:receive_as_bot`
+- 发送/回复消息：IM message 相关权限
+- 读取群聊信息/成员：IM chat 相关权限
+- 创建/更新文档：Docs/Drive 相关权限
+- 创建/更新演示稿：Slides 相关权限
+- 创建/更新白板：Docs/Whiteboard 相关权限
+
+开权限后通常需要发布应用版本，或在测试企业内启用新权限。
+
+### 5.4 配事件订阅
+
+在飞书开放平台应用后台：
+
+1. 进入事件与回调。
+2. 订阅方式选择 **使用长连接接收事件**。
+3. 添加事件：`im.message.receive_v1`。
+4. 确认权限里有 `im:message:receive_as_bot`。
+
+本项目用 lark-cli 长连接监听，不需要自己搭公网 callback URL。
+
+### 5.5 把机器人拉进群
+
+在飞书客户端里：
+
+1. 创建或打开测试群。
+2. 添加机器人，选择你的应用 bot。
+3. 群里 @ bot 发一条消息。
+4. 如果普通消息没有事件，先用 @ bot 测试；很多配置下 bot 只对 @ 消息更稳定。
+
+## 6. 本地先跑通
+
+不接飞书，先确认仓库没坏：
 
 ```bash
 rtk .venv/bin/python scripts/smoke_demo.py
+rtk .venv/bin/python -m pytest
 ```
 
-成功后会生成：
+当前测试基线：
 
-- `tasks/demo-local-smoke/request.md`
-- `tasks/demo-local-smoke/status.json`
-- `tasks/demo-local-smoke/artifacts.json`
-- 以及 `document.md`、`slides.md`、`whiteboard.mmd`
-
-再跑测试确认本地没问题：
-
-```bash
-rtk .venv/bin/pytest -q
+```text
+91 passed
 ```
 
-## 2. 工具体检
+检查工具：
 
 ```bash
 rtk .venv/bin/python scripts/check_tools.py
 ```
 
-你会看到 JSON 输出，关注：
+重点看 `codex`、`lark-cli`、`lark-im`、`lark-doc`、`lark-slides`、`lark-whiteboard` 是否 available。
 
-- `binaries.codex.available`
-- `binaries.lark-cli.available`
-- `skills.lark-im/lark-doc/lark-slides/lark-whiteboard.available`
+## 7. 跑飞书链路
 
-如果是 `false`，先补安装再继续。
+开两个终端。
 
-## 3. 接飞书最小链路
-
-### 3.1 飞书认证
-
-先做一次登录与检查：
+终端 A：监听飞书事件。
 
 ```bash
-rtk lark-cli auth login
-rtk lark-cli auth status
-rtk lark-cli doctor
+rtk lark-cli event +subscribe \
+  --event-types im.message.receive_v1 \
+  --compact \
+  --quiet \
+  --output-dir events/im
 ```
 
-### 3.2 订阅 IM 事件
+也可以用项目脚本：
 
 ```bash
 rtk .venv/bin/python scripts/subscribe_feishu_events.py --output-dir events/im
 ```
 
-这会在 `events/im/` 目录持续写入事件 JSON。
-
-### 3.3 启动事件消费
-
-本地处理（默认）:
+终端 B：消费事件。
 
 ```bash
-rtk .venv/bin/python scripts/run_event_consumer.py --execute --once
+rtk .venv/bin/python scripts/run_event_consumer.py \
+  --event-dir events/im \
+  --dispatch golembot \
+  --generator codex \
+  --publish \
+  --execute
 ```
 
-持续运行：
+然后在飞书群里 @ bot：
+
+```text
+根据刚才群聊内容，生成项目方案、8 页答辩 PPT 和白板流程图
+```
+
+参数说明：
+
+- `--execute`：真的回复飞书；不加就是 dry-run。
+- `--publish`：真的创建飞书文档/Slides/白板。
+- `--generator local`：本地 mock，最快。
+- `--generator codex`：当前稳定 Codex 路径。
+- `--generator app-server`：Codex 持久 session 后端试跑。
+
+## 8. 手动跑一个任务
+
+不走飞书事件，直接手动跑：
 
 ```bash
-rtk .venv/bin/python scripts/run_event_consumer.py --execute
+rtk .venv/bin/python scripts/run_golembot_office_task.py \
+  --message "根据群聊生成项目方案、PPT 和白板" \
+  --session-key "feishu:oc_demo" \
+  --chat-id "oc_demo" \
+  --sender-id "ou_demo" \
+  --task-id "gb-local-demo" \
+  --generator local
 ```
 
-说明：
-
-- `--execute` 表示发送真实回复
-- 不加 `--execute` 时为 dry-run 回复
-- `--dispatch local` 走本地处理
-- `--dispatch golembot` 转发到 GolemBot
-
-## 4. 比赛演示链路（lark-cli 入站 + GolemBot 编排）
-
-先打印三条标准启动命令：
+换真实 Codex：
 
 ```bash
-rtk .venv/bin/python scripts/print_demo_chain.py
+rtk .venv/bin/python scripts/run_golembot_office_task.py \
+  --message "根据群聊生成项目方案、PPT 和白板" \
+  --session-key "feishu:oc_demo" \
+  --chat-id "oc_demo" \
+  --sender-id "ou_demo" \
+  --task-id "gb-codex-demo" \
+  --generator codex
 ```
 
-按输出开 3 个终端分别执行：
+试 app-server：
 
-1. GolemBot gateway
-2. Feishu listener
-3. Event consumer（带 `--dispatch golembot --generator codex --publish --execute`）
+```bash
+rtk .venv/bin/python scripts/run_golembot_office_task.py \
+  --message "根据群聊生成项目方案、PPT 和白板" \
+  --session-key "feishu:oc_demo" \
+  --chat-id "oc_demo" \
+  --sender-id "ou_demo" \
+  --task-id "gb-app-server-demo" \
+  --generator app-server
+```
 
-## 5. 运行时文件协议（非常重要）
+## 9. 看状态
 
-每个任务目录应包含：
+任务目录：
 
-- `request.md`
-- `status.json`
-- `artifacts.json`
-- `tmux.log`（可选）
+```text
+tasks/<task_id>/request.md       用户请求和群聊上下文
+tasks/<task_id>/status.json      queued/running/waiting_for_user/completed/failed
+tasks/<task_id>/artifacts.json   文档、Slides、白板、摘要、下一步
+```
 
-状态只允许：
+看控制台快照：
 
-- `queued`
-- `running`
-- `waiting_for_user`
-- `completed`
-- `failed`
+```bash
+rtk .venv/bin/python scripts/task_console.py --plain --limit 5
+```
 
-任务是否完成，以 `artifacts.json` + `status.json` 为准，不以终端输出为准。
+只看失败：
 
-## 6. 常见问题
+```bash
+rtk .venv/bin/python scripts/task_console.py --plain --state failed --limit 5
+```
 
-1) `codex: command not found`
+任务是否完成，只看 `status.json` 和 `artifacts.json`，不要靠终端输出猜。
 
-先完成 Codex CLI 安装并确认 PATH 可见。
+## 10. 后续开发流程
 
-2) `lark-cli` 权限错误
+按这个顺序做。
 
-重新 `lark-cli auth login`，并检查飞书应用权限范围。
+1. **app-server 主后端**
+   - 一个飞书会话绑定一个 `codex_thread_id`。
+   - 新任务走 `thread/start + turn/start`。
+   - 后续消息复用同一个 thread。
+   - active turn 运行中走 `turn/steer`。
+   - 没有 active turn 时在同一个 thread 开新 `turn/start`。
 
-3) 监听到了事件但没有回复
+2. **飞书续聊和澄清**
+   - Agent 缺信息时自然反问。
+   - `status.json` 标记 `waiting_for_user`。
+   - 用户回复后继续原 task/thread。
+   - 不向用户暴露 gateway、Codex backend、内部错误栈。
 
-检查 `run_event_consumer.py` 是否带了 `--execute`。
+3. **可操作控制台**
+   - 展示任务、事件、产物、错误、thread/turn。
+   - 支持 append instruction、interrupt、retry、ack。
+   - 控制动作先写 `tasks/<task_id>/control.jsonl`，由 Bridge 消费。
 
-4) 任务一直不完成
+4. **比赛演示闭环**
+   - 手机端群聊 @Agent。
+   - 桌面端控制台显示任务运行。
+   - 生成文档、Slides、白板。
+   - 群聊收到交付链接。
+   - 手机端/桌面端分别打开产物，展示多端同步。
+   - 用户继续追问或要求修改，Agent 复用同一 session。
 
-优先看 `tasks/<task_id>/status.json` 的 `state` 和 `error` 字段。
+5. **加分项**
+   - 语音入口。
+   - Presenton/PPTX 真实文件。
+   - 富媒体图片/表格。
+   - 知识库归档。
+   - 离线草稿和冲突合并。
 
-## 7. 部署建议（团队内部）
+## 11. 常见问题
 
-当前仓库更适合先以“单机守护进程”方式部署：
+### 监听不到消息
 
-- 进程 A：`scripts/subscribe_feishu_events.py`
-- 进程 B：`scripts/run_event_consumer.py`
-- 可选进程 C：GolemBot gateway
+检查：
 
-建议使用 tmux/systemd/supervisor 做常驻，日志按天切分。
+- bot 是否进群。
+- 是否 @ bot。
+- 开放平台是否启用长连接事件。
+- 是否订阅 `im.message.receive_v1`。
+- 是否有 `im:message:receive_as_bot`。
+- `events/im/` 是否生成 JSON。
 
-## 8. 提交规范（避免泄露本机私有信息）
+### 有事件但不回复
 
-不要提交这类文件：
+检查 consumer 是否带 `--execute`。
 
-- `.env`、`.env.*`
+### 权限错误
+
+看错误里的 `permission_violations` 和 `console_url`。  
+bot 权限在开放平台开 scope；user 权限才用 `lark-cli auth login`。
+
+### app-server 卡住
+
+先检查：
+
+```bash
+rtk codex app-server --help
+rtk .venv/bin/python -m pytest tests/test_codex_app_server_backend.py
+```
+
+### 任务失败
+
+```bash
+rtk .venv/bin/python scripts/task_console.py --plain --state failed --limit 5
+rtk cat tasks/<task_id>/status.json
+rtk cat tasks/<task_id>/request.md
+```
+
+## 12. 提交规则
+
+不要提交：
+
+- `.env` / `.env.*`
 - `.codex/`
 - `.agents/`
-- `tasks/` 运行产物
-- `.experiments/` 本地实验目录
+- `tasks/`
+- `events/`
+- 本机 token、App Secret、授权文件、真实事件数据
 
-本仓库 `.gitignore` 已包含以上规则。
-
-建议用“白名单 add”提交：
+不要 `git add .`。用白名单：
 
 ```bash
-rtk git add README.md .gitignore bridge docs events examples requirements-dev.txt scripts skills tests 落地方案.md
-rtk git commit -m "docs: add teammate onboarding and deployment guide"
-rtk git push origin HEAD
+rtk git add README.md .gitignore AGENTS.md bridge docs examples requirements-dev.txt scripts skills tests 落地方案.md
 ```
 
-如果你不确定某个文件该不该提交，先跑：
+提交前：
 
 ```bash
 rtk git status --short
+rtk .venv/bin/python -m pytest
 ```
-
-确认没有本机私有内容后再 push。

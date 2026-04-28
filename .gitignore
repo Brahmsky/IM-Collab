@@ -3,8 +3,12 @@ __pycache__/
 .pytest_cache/
 *.pyc
 tasks/
+events/
 .experiments/
+.codex
 .codex/
+.agents
 .agents/
 .env
 .env.*
+飞书，启动 - AI驱动办公协同系统_files/

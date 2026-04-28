@@ -1,0 +1,2 @@
+"""IM-Collab bridge package."""
+

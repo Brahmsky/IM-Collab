@@ -1,0 +1,12 @@
+{
+  "type": "im.message.receive_v1",
+  "id": "om_demo_compact",
+  "message_id": "om_demo_compact",
+  "chat_id": "oc_demo_chat",
+  "chat_type": "group",
+  "message_type": "text",
+  "content": "@Agent 根据刚才讨论生成项目方案、8 页答辩 PPT 和白板流程图",
+  "sender_id": "ou_demo_user",
+  "create_time": "1773491924409",
+  "timestamp": "1773491924409"
+}
