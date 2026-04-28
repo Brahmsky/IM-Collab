@@ -7,6 +7,7 @@ from typing import Any
 from bridge.codex_app_server_task_runner import AppServerTaskBackend, run_codex_app_server_task
 from bridge.codex_task_runner import run_codex_task
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
+from bridge.group_briefing import build_group_brief, render_group_brief_markdown
 from bridge.lark_im import build_delivery_markdown
 from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_binding import bind_active_task, clear_active_task
@@ -36,6 +37,7 @@ def run_golembot_office_task(
             task_id,
             _request_markdown(message, session_key, chat_id, sender_id, conversation_context=conversation_context),
         )
+        _write_group_brief(task_dir, chat_id, conversation_context or [])
 
     binding = bind_active_task(
         bindings_path,
@@ -124,6 +126,7 @@ def _request_markdown(
     conversation_context: list[dict[str, Any]] | None = None,
 ) -> str:
     context_markdown = _conversation_context_markdown(conversation_context or [])
+    brief_note = _brief_note(conversation_context or [])
     return f"""# GolemBot Office Request
 
 session_key: {session_key}
@@ -134,6 +137,7 @@ sender_id: {sender_id}
 
 {message}
 {context_markdown}
+{brief_note}
 
 ## Execution Boundary
 
@@ -149,6 +153,14 @@ Use Codex + superpowers as the only orchestration layer. Prefer existing Feishu 
 """
 
 
+def _write_group_brief(task_dir: Path, chat_id: str, conversation_context: list[dict[str, Any]]) -> None:
+    if not conversation_context:
+        return
+    brief = build_group_brief(chat_id=chat_id, messages=conversation_context)
+    (task_dir / "brief.json").write_text(_json_dumps(brief), encoding="utf-8")
+    (task_dir / "brief.md").write_text(render_group_brief_markdown(brief), encoding="utf-8")
+
+
 def _conversation_context_markdown(messages: list[dict[str, Any]]) -> str:
     if not messages:
         return ""
@@ -160,6 +172,22 @@ def _conversation_context_markdown(messages: list[dict[str, Any]]) -> str:
         if content:
             lines.append(f"- {sender} ({message_id}): {content}")
     return "\n".join(lines) + "\n"
+
+
+def _brief_note(messages: list[dict[str, Any]]) -> str:
+    if not messages:
+        return ""
+    return """
+## Source-Grounded Group Brief
+
+This task includes `brief.json` and `brief.md`. Treat them as the evidence layer for group-chat facts. Preserve message references when using requirements from the brief.
+"""
+
+
+def _json_dumps(value: Any) -> str:
+    import json
+
+    return json.dumps(value, ensure_ascii=False, indent=2) + "\n"
 
 
 def _task_id_from_session(session_key: str) -> str:

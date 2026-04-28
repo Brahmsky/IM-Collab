@@ -52,6 +52,18 @@ def test_build_codex_task_prompt_is_file_protocol_only(tmp_path: Path) -> None:
     assert "Do not modify repository source files" in prompt
 
 
+def test_build_codex_task_prompt_prefers_group_brief_when_present(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    (task_dir / "brief.json").write_text('{"annotations":[]}\n', encoding="utf-8")
+    (task_dir / "brief.md").write_text("# brief\n", encoding="utf-8")
+
+    prompt = build_codex_task_prompt(task_dir)
+
+    assert "brief.json" in prompt
+    assert "brief.md" in prompt
+    assert "source-grounded group brief" in prompt
+
+
 def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
 

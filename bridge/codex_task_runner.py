@@ -13,9 +13,11 @@ REQUIRED_CODEX_OUTPUTS = ("plan.json", "document.md", "slides.md", "whiteboard.m
 
 def build_codex_task_prompt(task_dir: Path) -> str:
     task_path = _display_path(task_dir / "request.md")
+    brief_instruction = _brief_instruction(task_dir)
     return f"""You are generating local office artifacts for an IM-Collab task.
 
 Read `{task_path}`.
+{brief_instruction}
 
 Use Codex + superpowers as the planning and generation method. Do not call Feishu, lark-cli, Presenton, network APIs, or external office tools in this step. Python delivery code will publish the artifacts later.
 
@@ -42,6 +44,21 @@ Required outputs:
 ```
 
 Use relative or absolute paths in `artifacts.json` that point to the files you created. Mark the task as complete by writing valid `artifacts.json`; do not publish to Feishu yourself.
+"""
+
+
+def _brief_instruction(task_dir: Path) -> str:
+    brief_json = task_dir / "brief.json"
+    brief_md = task_dir / "brief.md"
+    if not brief_json.exists() and not brief_md.exists():
+        return ""
+    return f"""
+
+This task includes a source-grounded group brief:
+- `{_display_path(brief_json)}`
+- `{_display_path(brief_md)}`
+
+Use `brief.json` as the primary evidence layer for group-chat requirements. Do not add requirements that are not present in the brief or `request.md`. If the brief marks conflicts or open questions, preserve them in `document.md`, `slides.md`, and `next_steps` instead of silently resolving them.
 """
 
 

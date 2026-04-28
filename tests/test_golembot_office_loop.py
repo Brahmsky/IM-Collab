@@ -53,6 +53,40 @@ def test_run_golembot_office_task_writes_group_context_to_request(tmp_path: Path
     assert "PPT 要突出多端协同。" in request
 
 
+def test_run_golembot_office_task_writes_source_grounded_group_brief(tmp_path: Path) -> None:
+    run_golembot_office_task(
+        message="根据刚才讨论生成方案和 PPT",
+        session_key="feishu:oc_group",
+        chat_id="oc_group",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="brief-task",
+        generator="local",
+        publish=False,
+        conversation_context=[
+            {
+                "message_id": "om_1",
+                "sender_id": "teacher",
+                "sent_at": "2026-04-28T10:00:00+08:00",
+                "content": "周五 18:00 前提交项目方案和 PPT。",
+            },
+            {"message_id": "om_2", "sender_id": "ou_a", "content": "PPT 控制在 8 页，文档用 Markdown。"},
+        ],
+    )
+
+    task_dir = tmp_path / "brief-task"
+    brief = json.loads((task_dir / "brief.json").read_text(encoding="utf-8"))
+    brief_markdown = (task_dir / "brief.md").read_text(encoding="utf-8")
+    request = (task_dir / "request.md").read_text(encoding="utf-8")
+
+    assert brief["chat_id"] == "oc_group"
+    assert brief["annotations"]
+    assert all(annotation["evidence_message_ids"] for annotation in brief["annotations"])
+    assert "[om_1]" in brief_markdown
+    assert "brief.json" in request
+    assert "brief.md" in request
+
+
 def test_run_golembot_office_task_can_publish_without_im_reply(tmp_path: Path) -> None:
     calls: list[list[str]] = []
 

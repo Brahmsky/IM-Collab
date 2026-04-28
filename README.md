@@ -8,6 +8,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 飞书群聊/单聊
   -> lark-cli WebSocket 收事件
   -> Python Bridge 创建 tasks/<task_id>
+  -> group-briefing 生成可追溯群聊 brief
   -> Codex + superpowers 规划、执行、验收
   -> lark-cli / Feishu API / Presenton 生成文档、Slides、白板
   -> artifacts.json / status.json 记录交付状态
@@ -22,6 +23,7 @@ IM-Collab 是比赛题目 **Agent-Pilot · 从 IM 对话到演示稿的一键智
 
 - 本地 smoke：不依赖飞书，验证任务协议。
 - 飞书群聊：bot 进群后，@ bot 可触发任务。
+- 群聊旁批汇总：群聊上下文会先生成 `brief.json` 和 `brief.md`，所有关键信息保留消息引用。
 - 真实交付：可创建飞书文档、Slides、白板并回群。
 - 控制台：CLI 和本地 Web 页面都可查看 `tasks/`、`events/`，也能追加指令、打断、重试、确认。
 - Codex 后端：已有 `codex exec` 路径，也有 `codex app-server` 持久 session 路径。
@@ -290,6 +292,8 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
 
 ```text
 tasks/<task_id>/request.md       用户请求和群聊上下文
+tasks/<task_id>/brief.json       source-grounded 群聊旁批汇总，机器可读
+tasks/<task_id>/brief.md         source-grounded 群聊旁批汇总，人可读
 tasks/<task_id>/status.json      queued/running/waiting_for_user/completed/failed
 tasks/<task_id>/artifacts.json   文档、Slides、白板、摘要、下一步
 tasks/<task_id>/control.jsonl    追加指令、打断等运行中控制命令
@@ -328,6 +332,8 @@ rtk .venv/bin/python scripts/task_console.py append <task_id> --text "补充移�
 ```bash
 rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 ```
+
+群聊任务会在生成正式产物前先写 `brief.json` 和 `brief.md`。后续文档、PPT、白板应优先使用这两个文件里的证据，不要直接凭原始群聊自由发挥。
 
 重试一个 GolemBot office 任务：
 
