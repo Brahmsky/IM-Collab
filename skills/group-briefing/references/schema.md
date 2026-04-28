@@ -27,6 +27,8 @@
     }
   ],
   "summary": {
+    "source_message_count": 1,
+    "annotation_count": 1,
     "task_goal": [],
     "deadlines": [],
     "deliverables": [],
@@ -39,3 +41,9 @@
 ```
 
 Required invariant: every `annotations[].evidence_message_ids` entry must point to an existing `source_messages[].message_id`.
+
+Audit fields:
+
+- `annotations[].confidence`: confidence label for the extraction. Current heuristic extraction uses `high` for direct matches and `medium` for questions/conflicts that need confirmation.
+- `summary.source_message_count`: number of normalized source messages used to build the brief.
+- `summary.annotation_count`: number of generated side annotations.

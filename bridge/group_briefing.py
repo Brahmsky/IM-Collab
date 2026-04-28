@@ -29,7 +29,7 @@ def build_group_brief(chat_id: str, messages: list[dict[str, Any]]) -> dict[str,
         "chat_id": chat_id,
         "source_messages": source_messages,
         "annotations": annotations,
-        "summary": _summary_from_annotations(annotations),
+        "summary": _summary_from_annotations(annotations, source_message_count=len(source_messages)),
     }
     validate_group_brief(brief)
     return brief
@@ -220,8 +220,10 @@ def _conflict_annotations(offset: int, messages: list[dict[str, Any]]) -> list[d
     ]
 
 
-def _summary_from_annotations(annotations: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def _summary_from_annotations(annotations: list[dict[str, Any]], source_message_count: int) -> dict[str, Any]:
     summary = {
+        "source_message_count": source_message_count,
+        "annotation_count": len(annotations),
         "task_goal": [],
         "deadlines": [],
         "deliverables": [],

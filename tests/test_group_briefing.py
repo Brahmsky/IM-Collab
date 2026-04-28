@@ -61,6 +61,20 @@ def test_build_group_brief_marks_conflicting_slide_requirements() -> None:
     assert set(conflicts[0]["evidence_message_ids"]) == {"om_1", "om_2"}
 
 
+def test_group_brief_records_confidence_and_source_counts() -> None:
+    brief = build_group_brief(
+        chat_id="oc_group",
+        messages=[
+            {"message_id": "om_1", "sender_id": "teacher", "content": "周五 18:00 前提交方案。"},
+            {"message_id": "om_2", "sender_id": "student", "content": "PPT 做 8 页。"},
+        ],
+    )
+
+    assert all("confidence" in annotation for annotation in brief["annotations"])
+    assert brief["summary"]["source_message_count"] == 2
+    assert brief["summary"]["annotation_count"] == len(brief["annotations"])
+
+
 def test_render_group_brief_markdown_keeps_message_ids_visible() -> None:
     brief = build_group_brief(
         chat_id="oc_group",
