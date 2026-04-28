@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from bridge.feishu_events import parse_im_event
+from bridge.feishu_events import is_card_action_event, parse_card_action_event, parse_im_event
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
 from bridge.golembot_forwarder import extract_reply_markdown, forward_event_to_golembot
 from bridge.golembot_office_loop import run_golembot_office_task
@@ -40,6 +40,18 @@ def dispatch_event_via_golembot(
     context_reader: ContextReader = list_chat_messages,
 ) -> dict[str, Any]:
     payload = json.loads(event_path.read_text(encoding="utf-8"))
+    if is_card_action_event(payload):
+        return _dispatch_card_action(
+            payload,
+            publish=publish,
+            generator=generator,
+            execute_reply=execute_reply,
+            tasks_root=tasks_root,
+            office_runner=office_runner,
+            publisher=publisher,
+            replier=replier,
+            card_replier=card_replier,
+        )
     parsed = parse_im_event(payload)
     session_key = build_golembot_session_key("feishu", parsed.chat_id, parsed.sender_open_id, parsed.chat_type)
     active_result = _append_to_active_turn_if_available(tasks_root, session_key, parsed)
@@ -172,6 +184,63 @@ def dispatch_event_via_golembot(
         card_replier=card_replier,
     )
     return {**forwarded, "publish": publish_result, "reply_markdown": reply_markdown, "reply": reply}
+
+
+def _dispatch_card_action(
+    payload: dict[str, Any],
+    publish: bool,
+    generator: str,
+    execute_reply: bool,
+    tasks_root: Path,
+    office_runner: OfficeRunner,
+    publisher: Publisher,
+    replier: Replier,
+    card_replier: CardReplier,
+) -> dict[str, Any]:
+    parsed = parse_card_action_event(payload)
+    task_dir = tasks_root / parsed.task_id
+    command = append_control_command(
+        task_dir,
+        "card_action",
+        {
+            "action": parsed.action,
+            "message_id": parsed.message_id,
+            "chat_id": parsed.chat_id,
+            "sender_id": parsed.sender_open_id,
+            "value": parsed.value,
+        },
+        operator="feishu_card",
+    )
+    if parsed.action == "start_task":
+        task_result = office_runner(
+            message="开始执行",
+            session_key=f"feishu:{parsed.chat_id}",
+            chat_id=parsed.chat_id,
+            sender_id=parsed.sender_open_id,
+            tasks_root=tasks_root,
+            task_id=parsed.task_id,
+            generator=generator,
+            publish=False,
+            conversation_context=[],
+        )
+        publish_result = publisher(Path(str(task_result["task_dir"]))) if publish else None
+        if publish_result is not None:
+            reply_markdown = build_delivery_markdown(publish_result["artifacts"])
+            reply = _reply_with_optional_card(
+                parsed.message_id,
+                reply_markdown,
+                f"{parsed.message_id}-card-start",
+                not execute_reply,
+                task_dir=Path(str(task_result["task_dir"])),
+                card_name="delivery_card.json",
+                replier=replier,
+                card_replier=card_replier,
+            )
+        else:
+            reply = replier(parsed.message_id, "已开始执行。", f"{parsed.message_id}-card-start", not execute_reply)
+        return {"task_id": parsed.task_id, "control": command, "task": task_result, "publish": publish_result, "reply": reply}
+    reply = replier(parsed.message_id, "已记录你的补充。", f"{parsed.message_id}-card-action", not execute_reply)
+    return {"task_id": parsed.task_id, "control": command, "reply": reply}
 
 
 def _publish_bound_task(tasks_root: Path, session_key: str, publisher: Publisher) -> dict[str, Any]:

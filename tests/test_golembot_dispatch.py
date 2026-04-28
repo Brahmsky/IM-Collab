@@ -714,3 +714,79 @@ def test_dispatch_event_routes_mojibake_office_request_outside_golembot(tmp_path
 
     assert "forwarded" not in seen
     assert seen["office_kwargs"]["task_id"] == "im-om_123"
+
+
+def test_dispatch_card_start_action_runs_waiting_task_and_publishes(tmp_path: Path) -> None:
+    event_path = tmp_path / "card-event.json"
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "im-om_waiting"
+    task_dir.mkdir(parents=True)
+    (task_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "task_id": "im-om_waiting",
+                "state": "waiting_for_user",
+                "created_at": "2026-04-28T01:00:00+00:00",
+                "updated_at": "2026-04-28T01:00:00+00:00",
+                "error": "需要确认",
+            }
+        ),
+        encoding="utf-8",
+    )
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "card.action.trigger",
+                "message_id": "om_card",
+                "chat_id": "oc_group",
+                "open_id": "ou_requester",
+                "action": {"value": {"action": "start_task", "task_id": "im-om_waiting"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_office_runner(**kwargs) -> dict[str, object]:
+        seen["office_kwargs"] = kwargs
+        return {"task_id": "im-om_waiting", "task_dir": task_dir.as_posix()}
+
+    def fake_publisher(published_task_dir: Path) -> dict[str, object]:
+        seen["published_task_dir"] = published_task_dir
+        (published_task_dir / "delivery_card.json").write_text(
+            json.dumps({"header": {"title": {"content": "办公材料已生成"}}}),
+            encoding="utf-8",
+        )
+        return {
+            "task_id": "im-om_waiting",
+            "artifacts": {
+                "task_id": "im-om_waiting",
+                "document": {"remote": {"url": "https://feishu/doc"}},
+                "slides": {"remote": {"url": "https://feishu/slides"}},
+                "whiteboard": {"remote": {"whiteboard_token": "wb_123"}},
+                "summary": "已发布。",
+                "next_steps": [],
+            },
+        }
+
+    def fake_card_replier(message_id: str, card_path: Path, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["card_reply"] = {"message_id": message_id, "card_path": card_path}
+        return {"ok": True}
+
+    result = dispatch_event_via_golembot(
+        event_path,
+        gateway_url="http://127.0.0.1:3199",
+        token="secret",
+        publish=True,
+        execute_reply=True,
+        tasks_root=tasks_root,
+        office_runner=fake_office_runner,
+        publisher=fake_publisher,
+        card_replier=fake_card_replier,
+    )
+
+    assert seen["office_kwargs"]["task_id"] == "im-om_waiting"
+    assert seen["office_kwargs"]["message"] == "开始执行"
+    assert seen["published_task_dir"] == task_dir
+    assert seen["card_reply"]["card_path"] == task_dir / "delivery_card.json"
+    assert result["task"]["task_id"] == "im-om_waiting"
