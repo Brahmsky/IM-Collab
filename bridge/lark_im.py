@@ -40,6 +40,7 @@ def build_reply_card_args(
     idempotency_key: str,
     dry_run: bool = False,
 ) -> list[str]:
+    card_content = card_path.read_text(encoding="utf-8")
     args = [
         "lark-cli",
         "im",
@@ -48,8 +49,10 @@ def build_reply_card_args(
         "bot",
         "--message-id",
         message_id,
-        "--card",
-        f"@{card_path.as_posix()}",
+        "--msg-type",
+        "interactive",
+        "--content",
+        card_content,
         "--idempotency-key",
         _safe_idempotency_key(idempotency_key),
     ]
@@ -66,6 +69,18 @@ def reply_to_message(
     runner: Runner | None = None,
 ) -> dict[str, Any]:
     args = build_reply_args(message_id, markdown, idempotency_key, dry_run=dry_run)
+    output = runner(args) if runner else _subprocess_runner(args)
+    return {"ok": True, "dry_run": dry_run, "response": _extract_json(output), "raw": output}
+
+
+def reply_card_to_message(
+    message_id: str,
+    card_path: Path,
+    idempotency_key: str,
+    dry_run: bool = False,
+    runner: Runner | None = None,
+) -> dict[str, Any]:
+    args = build_reply_card_args(message_id, card_path, idempotency_key, dry_run=dry_run)
     output = runner(args) if runner else _subprocess_runner(args)
     return {"ok": True, "dry_run": dry_run, "response": _extract_json(output), "raw": output}
 

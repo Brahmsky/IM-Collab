@@ -10,6 +10,7 @@ from bridge.golembot_forwarder import extract_reply_markdown, forward_event_to_g
 from bridge.golembot_office_loop import run_golembot_office_task
 from bridge.lark_im import list_chat_messages
 from bridge.lark_im import build_delivery_markdown, reply_to_message
+from bridge.lark_im import reply_card_to_message
 from bridge.task_binding import get_task_binding
 from bridge.task_binding import build_golembot_session_key
 from bridge.task_control import append_control_command
@@ -17,6 +18,7 @@ from bridge.task_protocol import read_status
 
 Forwarder = Callable[..., dict[str, Any]]
 Replier = Callable[[str, str, str, bool], dict[str, Any]]
+CardReplier = Callable[[str, Path, str, bool], dict[str, Any]]
 Publisher = Callable[[Path], dict[str, Any]]
 OfficeRunner = Callable[..., dict[str, Any]]
 ContextReader = Callable[..., list[dict[str, Any]]]
@@ -34,6 +36,7 @@ def dispatch_event_via_golembot(
     office_runner: OfficeRunner = run_golembot_office_task,
     publisher: Publisher = publish_task_artifacts_to_feishu,
     replier: Replier = reply_to_message,
+    card_replier: CardReplier = reply_card_to_message,
     context_reader: ContextReader = list_chat_messages,
 ) -> dict[str, Any]:
     payload = json.loads(event_path.read_text(encoding="utf-8"))
@@ -75,11 +78,15 @@ def dispatch_event_via_golembot(
             else:
                 publish_result = publisher(Path(str(task_result["task_dir"])))
                 reply_markdown = build_delivery_markdown(publish_result["artifacts"])
-            reply = replier(
+            reply = _reply_with_optional_card(
                 parsed.message_id,
                 reply_markdown,
                 f"{parsed.message_id}-golembot-waiting-start",
                 not execute_reply,
+                task_dir=Path(str(task_result["task_dir"])),
+                card_name="delivery_card.json",
+                replier=replier,
+                card_replier=card_replier,
             )
             return {
                 **waiting_result,
@@ -121,14 +128,20 @@ def dispatch_event_via_golembot(
         publish_result = None
         if task_result.get("state") == "waiting_for_user":
             reply_markdown = str(task_result.get("reply_markdown") or "我已完成群聊信息汇总，但需要你确认后再继续。")
+            card_name = "confirmation_card.json"
         else:
             publish_result = publisher(Path(str(task_result["task_dir"])))
             reply_markdown = build_delivery_markdown(publish_result["artifacts"])
-        reply = replier(
+            card_name = "delivery_card.json"
+        reply = _reply_with_optional_card(
             parsed.message_id,
             reply_markdown,
             f"{parsed.message_id}-golembot-forwarded",
             not execute_reply,
+            task_dir=Path(str(task_result["task_dir"])),
+            card_name=card_name,
+            replier=replier,
+            card_replier=card_replier,
         )
         return {
             "session_key": session_key,
@@ -147,21 +160,46 @@ def dispatch_event_via_golembot(
     if publish and reply_markdown.startswith("任务 `"):
         publish_result = _publish_bound_task(tasks_root, str(forwarded["session_key"]), publisher)
         reply_markdown = build_delivery_markdown(publish_result["artifacts"])
-    reply = replier(
+    task_dir = _bound_task_dir(tasks_root, str(forwarded["session_key"])) if publish_result else None
+    reply = _reply_with_optional_card(
         parsed.message_id,
         reply_markdown,
         f"{parsed.message_id}-golembot-forwarded",
         not execute_reply,
+        task_dir=task_dir,
+        card_name="delivery_card.json",
+        replier=replier,
+        card_replier=card_replier,
     )
     return {**forwarded, "publish": publish_result, "reply_markdown": reply_markdown, "reply": reply}
 
 
 def _publish_bound_task(tasks_root: Path, session_key: str, publisher: Publisher) -> dict[str, Any]:
+    return publisher(_bound_task_dir(tasks_root, session_key))
+
+
+def _bound_task_dir(tasks_root: Path, session_key: str) -> Path:
     binding = get_task_binding(tasks_root / "task-bindings.json", session_key)
     task_id = binding.get("active_task_id") if binding else None
     if not task_id:
         raise RuntimeError(f"no active task binding for session {session_key}")
-    return publisher(tasks_root / str(task_id))
+    return tasks_root / str(task_id)
+
+
+def _reply_with_optional_card(
+    message_id: str,
+    markdown: str,
+    idempotency_key: str,
+    dry_run: bool,
+    task_dir: Path | None,
+    card_name: str,
+    replier: Replier,
+    card_replier: CardReplier,
+) -> dict[str, Any]:
+    card_path = task_dir / card_name if task_dir else None
+    if card_path and card_path.exists():
+        return card_replier(message_id, card_path, idempotency_key, dry_run)
+    return replier(message_id, markdown, idempotency_key, dry_run)
 
 
 def _append_to_active_turn_if_available(

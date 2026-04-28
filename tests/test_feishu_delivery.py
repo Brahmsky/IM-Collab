@@ -72,7 +72,10 @@ def test_deliver_task_to_feishu_publishes_artifacts_and_replies(tmp_path: Path) 
     assert artifacts["slides"]["remote"]["slides_added"] == 8
     assert artifacts["whiteboard"]["remote"]["whiteboard_token"] == "whiteboard_123"
     assert artifacts["whiteboard"]["remote"]["created_node_id"] == "t1:2"
-    assert any(call[:3] == ["lark-cli", "im", "+messages-reply"] for call in calls)
+    reply_call = next(call for call in calls if call[:3] == ["lark-cli", "im", "+messages-reply"])
+    assert reply_call[reply_call.index("--msg-type") + 1] == "interactive"
+    assert "办公材料已生成" in reply_call[reply_call.index("--content") + 1]
+    assert "--markdown" not in reply_call
 
 
 def test_publish_task_artifacts_to_feishu_does_not_reply(tmp_path: Path) -> None:

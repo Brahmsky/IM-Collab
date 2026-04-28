@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from bridge.lark_docs import create_doc_from_markdown
-from bridge.lark_im import build_delivery_card, build_delivery_markdown, reply_to_message
+from bridge.lark_im import build_delivery_card, reply_card_to_message
 from bridge.lark_slides import create_slides_from_markdown
 from bridge.lark_whiteboard import append_whiteboard_to_doc, update_whiteboard_from_mermaid
 from bridge.task_protocol import read_artifacts, write_artifacts
@@ -22,10 +22,11 @@ def deliver_task_to_feishu(
     result = publish_task_artifacts_to_feishu(task_dir, runner=runner)
     artifacts = result["artifacts"]
     command_runner = _adapt_runner(runner)
+    card_path = task_dir / "delivery_card.json"
 
-    reply = reply_to_message(
+    reply = reply_card_to_message(
         message_id,
-        build_delivery_markdown(artifacts),
+        card_path,
         idempotency_key=f"{artifacts['task_id']}-delivery",
         dry_run=dry_run_reply,
         runner=command_runner,

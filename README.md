@@ -342,9 +342,9 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 
 如果用户在同一群聊里明确说“开始执行 / 开始生成 / 确认开始”，Bridge 会复用原 `task_id`，读取已经记录的确认信息，继续生成并发布产物。
 
-等待确认的任务还会写出 `confirmation_card.json`，包含“开始执行”和“补充要求”按钮动作值。当前默认回复仍走 Markdown；接入飞书 interactive card 发送和回调时复用这个 payload。
+等待确认的任务还会写出 `confirmation_card.json`，包含“开始执行”和“补充要求”按钮动作值。事件分发会优先用飞书 interactive 消息发送这张卡片；如果卡片文件不存在，才回退到 Markdown。
 
-完成发布的任务还会写出 `delivery_card.json`，包含文档和演示稿按钮。当前默认回复仍走 Markdown，但会把飞书文档、Slides、白板地址按裸链接单独发送，优先让飞书客户端渲染原生预览卡片；后续接入 interactive card 发送时直接复用 `delivery_card.json`。
+完成发布的任务还会写出 `delivery_card.json`，包含文档和演示稿按钮。事件分发和手动 `deliver_task_to_feishu` 会优先发送这张 interactive 卡片；Markdown 交付文本仍保留为回退和控制台展示。
 
 重试一个 GolemBot office 任务：
 

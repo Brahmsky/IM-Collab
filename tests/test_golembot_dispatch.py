@@ -109,6 +109,10 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
 
     def fake_publisher(published_task_dir: Path) -> dict[str, object]:
         seen["published_task_dir"] = published_task_dir
+        (published_task_dir / "delivery_card.json").write_text(
+            json.dumps({"header": {"title": {"content": "办公材料已生成"}}}),
+            encoding="utf-8",
+        )
         return {
             "task_id": "gb-session",
             "artifacts": {
@@ -122,7 +126,12 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
         }
 
     def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["markdown_reply"] = True
         seen["markdown"] = markdown
+        return {"ok": True}
+
+    def fake_card_replier(message_id: str, card_path: Path, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["card_reply"] = {"message_id": message_id, "card_path": card_path, "dry_run": dry_run}
         return {"ok": True}
 
     dispatch_event_via_golembot(
@@ -135,11 +144,13 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
         forwarder=fake_forwarder,
         publisher=fake_publisher,
         replier=fake_replier,
+        card_replier=fake_card_replier,
     )
 
     assert seen["forward_publish"] is False
     assert seen["published_task_dir"] == task_dir
-    assert "https://feishu/doc" in seen["markdown"]
+    assert "markdown_reply" not in seen
+    assert seen["card_reply"]["card_path"] == task_dir / "delivery_card.json"
 
 
 def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path) -> None:
@@ -173,6 +184,10 @@ def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path
 
     def fake_publisher(published_task_dir: Path) -> dict[str, object]:
         seen["published_task_dir"] = published_task_dir
+        (published_task_dir / "delivery_card.json").write_text(
+            json.dumps({"header": {"title": {"content": "办公材料已生成"}}}),
+            encoding="utf-8",
+        )
         return {
             "task_id": "im-om_123",
             "artifacts": {
@@ -186,7 +201,12 @@ def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path
         }
 
     def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["markdown_reply"] = True
         seen["markdown"] = markdown
+        return {"ok": True}
+
+    def fake_card_replier(message_id: str, card_path: Path, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["card_reply"] = {"message_id": message_id, "card_path": card_path, "dry_run": dry_run}
         return {"ok": True}
 
     dispatch_event_via_golembot(
@@ -200,13 +220,16 @@ def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path
         office_runner=fake_office_runner,
         publisher=fake_publisher,
         replier=fake_replier,
+        card_replier=fake_card_replier,
     )
 
     assert "forwarded" not in seen
     assert seen["office_kwargs"]["generator"] == "app-server"
     assert seen["office_kwargs"]["task_id"] == "im-om_123"
     assert seen["published_task_dir"] == task_dir
-    assert "你好，我是你的办公协作助手。" in seen["markdown"]
+    assert "markdown_reply" not in seen
+    assert seen["card_reply"]["message_id"] == "om_123"
+    assert seen["card_reply"]["card_path"] == task_dir / "delivery_card.json"
 
 
 def test_dispatch_group_office_task_passes_recent_group_context(tmp_path: Path) -> None:
@@ -307,6 +330,10 @@ def test_dispatch_group_office_task_replies_confirmation_when_brief_waits(tmp_pa
     def fake_office_runner(**kwargs) -> dict[str, object]:
         seen["office_kwargs"] = kwargs
         (task_dir / "confirmation.md").write_text("请确认：PPT 页数出现多个版本。引用: om_1, om_2\n", encoding="utf-8")
+        (task_dir / "confirmation_card.json").write_text(
+            json.dumps({"header": {"title": {"content": "请确认群聊需求"}}}),
+            encoding="utf-8",
+        )
         return {
             "task_id": "im-om_trigger",
             "task_dir": task_dir.as_posix(),
@@ -319,7 +346,12 @@ def test_dispatch_group_office_task_replies_confirmation_when_brief_waits(tmp_pa
         return {}
 
     def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["markdown_reply"] = True
         seen["reply"] = {"message_id": message_id, "markdown": markdown, "dry_run": dry_run}
+        return {"ok": True}
+
+    def fake_card_replier(message_id: str, card_path: Path, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["card_reply"] = {"message_id": message_id, "card_path": card_path}
         return {"ok": True}
 
     result = dispatch_event_via_golembot(
@@ -332,12 +364,14 @@ def test_dispatch_group_office_task_replies_confirmation_when_brief_waits(tmp_pa
         office_runner=fake_office_runner,
         publisher=fake_publisher,
         replier=fake_replier,
+        card_replier=fake_card_replier,
         context_reader=fake_context_reader,
     )
 
     assert "published_task_dir" not in seen
-    assert seen["reply"]["message_id"] == "om_trigger"
-    assert "请确认" in seen["reply"]["markdown"]
+    assert "markdown_reply" not in seen
+    assert seen["card_reply"]["message_id"] == "om_trigger"
+    assert seen["card_reply"]["card_path"] == task_dir / "confirmation_card.json"
     assert result["publish"] is None
     assert result["task"]["state"] == "waiting_for_user"
 
@@ -483,7 +517,12 @@ def test_dispatch_group_message_appends_confirmation_to_waiting_task(tmp_path: P
         return {}
 
     def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["markdown_reply"] = True
         seen["reply"] = {"message_id": message_id, "markdown": markdown}
+        return {"ok": True}
+
+    def fake_card_replier(message_id: str, card_path: Path, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["card_reply"] = {"message_id": message_id, "card_path": card_path}
         return {"ok": True}
 
     result = dispatch_event_via_golembot(
@@ -564,6 +603,10 @@ def test_dispatch_group_start_message_runs_waiting_task_and_publishes(tmp_path: 
 
     def fake_publisher(published_task_dir: Path) -> dict[str, object]:
         seen["published_task_dir"] = published_task_dir
+        (published_task_dir / "delivery_card.json").write_text(
+            json.dumps({"header": {"title": {"content": "办公材料已生成"}}}),
+            encoding="utf-8",
+        )
         return {
             "task_id": "im-om_waiting",
             "artifacts": {
@@ -577,7 +620,12 @@ def test_dispatch_group_start_message_runs_waiting_task_and_publishes(tmp_path: 
         }
 
     def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["markdown_reply"] = True
         seen["reply"] = {"message_id": message_id, "markdown": markdown}
+        return {"ok": True}
+
+    def fake_card_replier(message_id: str, card_path: Path, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["card_reply"] = {"message_id": message_id, "card_path": card_path}
         return {"ok": True}
 
     result = dispatch_event_via_golembot(
@@ -590,12 +638,14 @@ def test_dispatch_group_start_message_runs_waiting_task_and_publishes(tmp_path: 
         office_runner=fake_office_runner,
         publisher=fake_publisher,
         replier=fake_replier,
+        card_replier=fake_card_replier,
     )
 
     assert seen["office_kwargs"]["task_id"] == "im-om_waiting"
     assert seen["office_kwargs"]["conversation_context"] == []
     assert seen["published_task_dir"] == task_dir
-    assert "https://feishu/doc" in seen["reply"]["markdown"]
+    assert "markdown_reply" not in seen
+    assert seen["card_reply"]["card_path"] == task_dir / "delivery_card.json"
     assert result["task"]["task_id"] == "im-om_waiting"
     commands = [
         json.loads(line)
