@@ -78,6 +78,27 @@ def test_build_codex_task_prompt_includes_control_log_when_present(tmp_path: Pat
     assert "latest operator and group-chat instructions" in prompt
 
 
+def test_build_codex_task_prompt_includes_existing_artifacts_for_followup(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "把刚才的 PPT 改成 5 分钟答辩版。")
+    (task_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "task_id": "im-om_123",
+                "slides": {"remote": {"url": "https://feishu/slides"}},
+                "summary": "已发布初版。",
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    prompt = build_codex_task_prompt(task_dir)
+
+    assert "artifacts.json" in prompt
+    assert "https://feishu/slides" in prompt
+    assert "Update existing Feishu artifacts" in prompt
+
+
 def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
 

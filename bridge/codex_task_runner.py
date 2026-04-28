@@ -15,11 +15,13 @@ def build_codex_task_prompt(task_dir: Path) -> str:
     task_path = _display_path(task_dir / "request.md")
     brief_instruction = _brief_instruction(task_dir)
     control_instruction = _control_instruction(task_dir)
+    artifact_instruction = _artifact_instruction(task_dir)
     return f"""You are generating local office artifacts for an IM-Collab task.
 
 Read `{task_path}`.
 {brief_instruction}
 {control_instruction}
+{artifact_instruction}
 
 Use Codex + superpowers as the planning and generation method. Do not call Feishu, lark-cli, Presenton, network APIs, or external office tools in this step. Python delivery code will publish the artifacts later.
 
@@ -46,6 +48,25 @@ Required outputs:
 ```
 
 Use relative or absolute paths in `artifacts.json` that point to the files you created. Mark the task as complete by writing valid `artifacts.json`; do not publish to Feishu yourself.
+"""
+
+
+def _artifact_instruction(task_dir: Path) -> str:
+    artifacts_path = task_dir / "artifacts.json"
+    if not artifacts_path.exists():
+        return ""
+    preview = artifacts_path.read_text(encoding="utf-8").strip()
+    return f"""
+
+This task already has delivery metadata in `{_display_path(artifacts_path)}`. If the user asks for modifications, ground the new work in these existing artifacts and update existing Feishu artifacts where possible instead of creating unrelated duplicates.
+
+Current artifacts:
+
+```json
+{preview}
+```
+
+Update existing Feishu artifacts when the user asks for modifications; do not create unrelated duplicate deliverables unless necessary.
 """
 
 
