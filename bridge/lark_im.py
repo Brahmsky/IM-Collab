@@ -109,12 +109,48 @@ def build_delivery_markdown(artifacts: dict[str, Any]) -> str:
     whiteboard = _remote_value(artifacts, "whiteboard", "whiteboard_token")
     return f"""你好，我是你的办公协作助手。文档生成完成，相关材料已经整理好：
 
-**文档**：{document}
-**演示稿**：{slides}
-**白板**：{whiteboard}
+文档
+{document}
+
+演示稿
+{slides}
+
+白板
+{whiteboard}
 
 还需要我根据群里的消息补充背景、调整 PPT 结构，或者继续把这份内容整理成会议纪要/待办吗？
 """
+
+
+def build_delivery_card(artifacts: dict[str, Any]) -> dict[str, Any]:
+    document = _remote_value(artifacts, "document", "url")
+    slides = _remote_value(artifacts, "slides", "url")
+    whiteboard = _remote_value(artifacts, "whiteboard", "whiteboard_token")
+    elements: list[dict[str, Any]] = [
+        {"tag": "markdown", "content": "文档、演示稿和白板已经生成。可以直接打开查看，也可以继续在群里补充修改要求。"},
+        {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "打开文档"},
+            "type": "primary",
+            "url": document,
+        },
+        {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": "打开演示稿"},
+            "type": "default",
+            "url": slides,
+        },
+    ]
+    if whiteboard and whiteboard != "未生成":
+        elements.append({"tag": "markdown", "content": f"白板：{whiteboard}"})
+    return {
+        "config": {"wide_screen_mode": True},
+        "header": {
+            "template": "green",
+            "title": {"tag": "plain_text", "content": "办公材料已生成"},
+        },
+        "elements": elements,
+    }
 
 
 def _remote_value(artifacts: dict[str, Any], key: str, field: str) -> str:

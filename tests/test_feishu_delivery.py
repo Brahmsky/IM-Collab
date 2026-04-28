@@ -109,4 +109,7 @@ def test_publish_task_artifacts_to_feishu_does_not_reply(tmp_path: Path) -> None
     result = publish_task_artifacts_to_feishu(task_dir, runner=fake_run)
 
     assert result["artifacts"]["document"]["remote"]["url"] == "doc_url"
+    delivery_card = json.loads((task_dir / "delivery_card.json").read_text(encoding="utf-8"))
+    assert delivery_card["header"]["title"]["content"] == "办公材料已生成"
+    assert "doc_url" in str(delivery_card)
     assert not any(call[:3] == ["lark-cli", "im", "+messages-reply"] for call in calls)

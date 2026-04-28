@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from bridge.lark_docs import create_doc_from_markdown
-from bridge.lark_im import build_delivery_markdown, reply_to_message
+from bridge.lark_im import build_delivery_card, build_delivery_markdown, reply_to_message
 from bridge.lark_slides import create_slides_from_markdown
 from bridge.lark_whiteboard import append_whiteboard_to_doc, update_whiteboard_from_mermaid
 from bridge.task_protocol import read_artifacts, write_artifacts
@@ -86,6 +86,10 @@ def publish_task_artifacts_to_feishu(
         f"{artifacts['summary']} Published to Feishu document, slides, and whiteboard via lark-cli."
     )
     write_artifacts(task_dir, artifacts)
+    (task_dir / "delivery_card.json").write_text(
+        json.dumps(build_delivery_card(artifacts), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     return {"task_id": artifacts["task_id"], "artifacts": artifacts}
 

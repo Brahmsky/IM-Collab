@@ -6,6 +6,7 @@ from pathlib import Path
 
 from bridge.lark_im import (
     build_delivery_markdown,
+    build_delivery_card,
     build_list_messages_args,
     build_reply_args,
     build_reply_card_args,
@@ -152,6 +153,8 @@ def test_build_delivery_markdown_includes_artifact_links() -> None:
     assert "https://example/doc" in markdown
     assert "https://example/slides" in markdown
     assert "wb_123" in markdown
+    assert markdown.count("https://example/doc") == 1
+    assert "[文档]" not in markdown
 
 
 def test_build_delivery_markdown_uses_user_facing_assistant_voice() -> None:
@@ -178,3 +181,21 @@ def test_build_delivery_markdown_uses_user_facing_assistant_voice() -> None:
     assert "artifacts" not in markdown
     assert "Bridge" not in markdown
     assert "Published to Feishu" not in markdown
+
+
+def test_build_delivery_card_contains_artifact_buttons() -> None:
+    card = build_delivery_card(
+        {
+            "task_id": "im-om_123",
+            "document": {"remote": {"url": "https://example/doc"}},
+            "slides": {"remote": {"url": "https://example/slides"}},
+            "whiteboard": {"remote": {"whiteboard_token": "wb_123"}},
+            "summary": "已完成。",
+            "next_steps": [],
+        }
+    )
+
+    assert card["config"]["wide_screen_mode"] is True
+    assert card["header"]["title"]["content"] == "办公材料已生成"
+    assert {"tag": "button", "text": {"tag": "plain_text", "content": "打开文档"}, "type": "primary", "url": "https://example/doc"} in card["elements"]
+    assert {"tag": "button", "text": {"tag": "plain_text", "content": "打开演示稿"}, "type": "default", "url": "https://example/slides"} in card["elements"]
