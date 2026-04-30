@@ -7,6 +7,7 @@ from typing import Any, Callable
 from bridge.feishu_events import parse_im_event
 
 ContextReader = Callable[..., list[dict[str, Any]]]
+ContextSelector = Callable[[list[dict[str, Any]], int], list[dict[str, Any]]]
 
 
 def normalize_feishu_message(payload: dict[str, Any]) -> dict[str, Any]:
@@ -44,15 +45,21 @@ def read_fixture_context(path: Path, chat_id: str, page_size: int = 20) -> list[
     return build_standard_group_context(path, chat_id=chat_id, page_size=page_size)
 
 
+def select_latest_context(messages: list[dict[str, Any]], page_size: int) -> list[dict[str, Any]]:
+    return messages[-page_size:]
+
+
 def build_context_reader(
     fixture_path: Path | None,
     real_reader: ContextReader,
+    selector: ContextSelector = select_latest_context,
 ) -> ContextReader:
     if fixture_path is None:
         return real_reader
 
     def fixture_reader(chat_id: str, page_size: int = 20) -> list[dict[str, Any]]:
-        return read_fixture_context(fixture_path, chat_id=chat_id, page_size=page_size)
+        messages = build_standard_group_context(fixture_path, chat_id=chat_id)
+        return selector(messages, page_size)
 
     return fixture_reader
 

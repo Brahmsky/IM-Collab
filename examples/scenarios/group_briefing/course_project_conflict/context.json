@@ -1,0 +1,196 @@
+{
+  "scenario_id": "course_project_conflict",
+  "description": "三名队友和一个 bot 在课程项目群里围绕正式通知、后续更正、附件和分工形成的混乱上下文。",
+  "messages": [
+    {
+      "message_id": "om_course_001",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_teacher",
+      "sender": "陈老师",
+      "role": "organizer",
+      "sent_at": "2026-04-21T09:00:00+08:00",
+      "message_type": "text",
+      "content": "各位同学，本次《服务设计》课程项目最终提交要求如下：1）提交一份完整调研与方案文档，建议 3000-5000 字；2）提交 8-10 页展示 PPT；3）每组需要附一张服务流程图或用户旅程图；4）提交入口为课程平台“期末项目”作业；5）截止时间暂定 4 月 30 日 18:00。请以小组为单位提交。"
+    },
+    {
+      "message_id": "om_course_002",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_teacher",
+      "sender": "陈老师",
+      "role": "organizer",
+      "sent_at": "2026-04-21T09:04:00+08:00",
+      "message_type": "text",
+      "content": "收到。我先理解一下：最后要文档、PPT、流程图，截止 4 月 30 日 18:00，在课程平台提交。"
+    },
+    {
+      "message_id": "om_course_003",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_yu",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-21T09:08:00+08:00",
+      "message_type": "text",
+      "content": "我可以负责用户访谈和痛点整理。上周访谈记录我整理成了一个表，里面有 6 个用户和 2 个商家。"
+    },
+    {
+      "message_id": "om_course_004",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_lin",
+      "sender": "林澈",
+      "role": "visual_owner",
+      "sent_at": "2026-04-21T09:12:00+08:00",
+      "message_type": "file",
+      "content": "我把老师上次给的模板发一下，PPT 大概按这个版式做。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "服务设计期末展示模板.pptx",
+          "file_key": "file_course_template_ppt"
+        }
+      ]
+    },
+    {
+      "message_id": "om_course_005",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_me",
+      "sender": "李飞",
+      "role": "team_lead",
+      "sent_at": "2026-04-21T10:15:00+08:00",
+      "message_type": "text",
+      "content": "补充说明：文档请使用 PDF 格式提交，文件名为“第几组-项目名称-负责人姓名”。PPT 不强制 PDF，可以直接交 pptx。"
+    },
+    {
+      "message_id": "om_course_006",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_yu",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-21T10:20:00+08:00",
+      "message_type": "text",
+      "content": "那文档我们最后导出 PDF。调研表我今天晚上补齐截图，明天给到。"
+    },
+    {
+      "message_id": "om_course_007",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_lin",
+      "sender": "林澈",
+      "role": "visual_owner",
+      "sent_at": "2026-04-21T11:30:00+08:00",
+      "message_type": "text",
+      "content": "我记得上课说 PPT 只能 6 页？如果是 8-10 页我怕时间不够。"
+    },
+    {
+      "message_id": "om_course_008",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_teacher",
+      "sender": "陈老师",
+      "role": "organizer",
+      "sent_at": "2026-04-21T11:35:00+08:00",
+      "message_type": "text",
+      "content": "更正一下：课堂展示时间压缩，PPT 控制在 6-8 页即可。文档要求不变。"
+    },
+    {
+      "message_id": "om_course_009",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_teacher",
+      "sender": "陈老师",
+      "role": "organizer",
+      "sent_at": "2026-04-21T11:40:00+08:00",
+      "message_type": "text",
+      "content": "那 PPT 按 7 页做，结构：问题背景、调研发现、核心洞察、方案流程、原型、落地计划、总结。"
+    },
+    {
+      "message_id": "om_course_010",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_yu",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-22T20:11:00+08:00",
+      "message_type": "link",
+      "content": "访谈整理表在这里：https://example.com/interview-table 。其中最常见的问题是预约流程不清楚、到店排队时间不可预期。"
+    },
+    {
+      "message_id": "om_course_011",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_lin",
+      "sender": "林澈",
+      "role": "visual_owner",
+      "sent_at": "2026-04-22T20:40:00+08:00",
+      "message_type": "image",
+      "content": "用户旅程草图我先发一个截图，流程里有几个痛点标注。",
+      "attachments": [
+        {
+          "type": "image",
+          "name": "journey-draft.png",
+          "image_key": "img_course_journey_draft"
+        }
+      ]
+    },
+    {
+      "message_id": "om_course_012",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_me",
+      "sender": "李飞",
+      "role": "team_lead",
+      "sent_at": "2026-04-23T08:30:00+08:00",
+      "message_type": "text",
+      "content": "关于截止时间再明确一下：课程平台会在 4 月 30 日 18:00 关闭入口，但允许各组在当天 21:00 前把最终版补发到群里备份。正式计分仍以平台提交为准。"
+    },
+    {
+      "message_id": "om_course_013",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_me",
+      "sender": "李飞",
+      "role": "team_lead",
+      "sent_at": "2026-04-23T08:36:00+08:00",
+      "message_type": "text",
+      "content": "这里有个点：正式截止应该还是 18:00，21:00 只是群里备份。我们不要把 21:00 写成截止。"
+    },
+    {
+      "message_id": "om_course_014",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_lin",
+      "sender": "林澈",
+      "role": "visual_owner",
+      "sent_at": "2026-04-23T09:10:00+08:00",
+      "message_type": "text",
+      "content": "我今晚先做 PPT 版式。文档最后谁来合？"
+    },
+    {
+      "message_id": "om_course_015",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_me",
+      "sender": "李飞",
+      "role": "team_lead",
+      "sent_at": "2026-04-23T09:14:00+08:00",
+      "message_type": "text",
+      "content": "我来合文档和最终提交。余舟负责调研内容，林澈负责图和 PPT，我负责方案逻辑、流程图最终版和提交。"
+    },
+    {
+      "message_id": "om_course_016",
+      "chat_id": "oc_course_project",
+      "chat_type": "group",
+      "sender_id": "ou_me",
+      "sender": "李飞",
+      "role": "team_lead",
+      "sent_at": "2026-04-23T09:20:00+08:00",
+      "message_type": "text",
+      "content": "@飞书 CLI 请根据上面群聊生成一份 source-grounded 任务 brief，重点标出截止时间、提交方式、文档/PPT/流程图要求、分工和冲突。"
+    }
+  ]
+}

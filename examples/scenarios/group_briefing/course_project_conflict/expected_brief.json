@@ -1,0 +1,49 @@
+{
+  "scenario_id": "course_project_conflict",
+  "facts": [
+    {
+      "kind": "deadline",
+      "summary": "正式平台提交截止时间是 2026-04-30 18:00；当天 21:00 前群内补发只作为备份，不应写成正式截止。",
+      "source_message_ids": ["om_course_001", "om_course_012", "om_course_013"]
+    },
+    {
+      "kind": "submission",
+      "summary": "以小组为单位在课程平台“期末项目”作业入口提交。",
+      "source_message_ids": ["om_course_001"]
+    },
+    {
+      "kind": "document_format",
+      "summary": "调研与方案文档建议 3000-5000 字，最终以 PDF 提交，文件名为“第几组-项目名称-负责人姓名”。",
+      "source_message_ids": ["om_course_001", "om_course_005"]
+    },
+    {
+      "kind": "slides_format",
+      "summary": "PPT 从原 8-10 页更正为 6-8 页，团队暂定按 7 页组织。",
+      "source_message_ids": ["om_course_001", "om_course_008", "om_course_009"]
+    },
+    {
+      "kind": "assignment",
+      "summary": "余舟负责调研内容，林澈负责图和 PPT，李飞负责方案逻辑、流程图最终版、文档合并和提交。",
+      "source_message_ids": ["om_course_003", "om_course_014", "om_course_015"]
+    }
+  ],
+  "conflicts": [
+    {
+      "kind": "slides_page_count",
+      "summary": "最初通知写 8-10 页，后续老师更正为 6-8 页；应采用后续更正。",
+      "source_message_ids": ["om_course_001", "om_course_007", "om_course_008"]
+    },
+    {
+      "kind": "deadline_backup_vs_official",
+      "summary": "18:00 是正式平台截止，21:00 是群内备份时间；如果用户要求写截止时间，必须区分这两个口径。",
+      "source_message_ids": ["om_course_012", "om_course_013"]
+    }
+  ],
+  "open_questions": [
+    {
+      "kind": "project_name",
+      "summary": "群聊没有明确最终项目名称，生成文档封面或文件名时需要向用户确认。",
+      "source_message_ids": ["om_course_001", "om_course_015"]
+    }
+  ]
+}
