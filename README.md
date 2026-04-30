@@ -251,6 +251,30 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 此时同一飞书会话的新消息会追加到 `tasks/<task_id>/control.jsonl`，runner 轮询后调用 `turn/steer`。
 - 确认卡片按钮会产生 `card.action.trigger`，Bridge 会写入 `control.jsonl`，并在“开始执行”动作中恢复 waiting task。
 
+### 7.1 用构造群聊上下文跑测试
+
+默认情况下，消费器会从真实飞书群聊读取上下文。开发和验收时可以显式传入标准后端群聊 fixture，避免每次都在群里手动一句句造数据：
+
+```bash
+rtk .venv/bin/python scripts/build_group_context_fixture.py \
+  --input examples/scenarios/raw_feishu_events \
+  --output /tmp/im-collab-context.json \
+  --chat-id oc_demo
+```
+
+消费事件时指定：
+
+```bash
+rtk .venv/bin/python scripts/run_event_consumer.py \
+  --event-dir events/im \
+  --dispatch golembot \
+  --publish \
+  --execute \
+  --context-fixture /tmp/im-collab-context.json
+```
+
+`--context-fixture` 支持单个 JSON、JSONL 或目录。只有传这个参数才走构造上下文；不传时仍走真实飞书群聊通路。
+
 ## 8. 手动跑一个任务
 
 不走飞书事件，直接手动跑：

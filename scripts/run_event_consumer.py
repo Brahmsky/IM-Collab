@@ -9,6 +9,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from bridge.event_consumer import EventConsumer, EventConsumerConfig
 from bridge.golembot_dispatch import dispatch_event_via_golembot
+from bridge.group_context import build_context_reader
+from bridge.lark_im import list_chat_messages
 from scripts.process_feishu_event import process_event_file
 
 
@@ -29,6 +31,8 @@ def build_config(
 
 
 def build_handler(args: argparse.Namespace, config: EventConsumerConfig):
+    context_reader = build_context_reader(getattr(args, "context_fixture", None), real_reader=list_chat_messages)
+
     def handle(event_path: Path) -> None:
         if args.dispatch == "golembot":
             dispatch_event_via_golembot(
@@ -39,6 +43,7 @@ def build_handler(args: argparse.Namespace, config: EventConsumerConfig):
                 generator=args.generator,
                 execute_reply=args.execute,
                 tasks_root=config.tasks_root,
+                context_reader=context_reader,
             )
         else:
             process_event_file(
@@ -65,6 +70,11 @@ def main() -> int:
     parser.add_argument("--golembot-token", default="local-golembot-spike")
     parser.add_argument("--publish", action="store_true", help="Ask GolemBot task runner to publish real Feishu artifacts.")
     parser.add_argument("--generator", choices=("codex", "local", "app-server"), default="app-server")
+    parser.add_argument(
+        "--context-fixture",
+        type=Path,
+        help="Use a JSON/JSONL/directory fixture as group-chat context instead of live Feishu history.",
+    )
     args = parser.parse_args()
 
     config = build_config(

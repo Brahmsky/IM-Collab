@@ -31,6 +31,7 @@ def test_golembot_handler_passes_tasks_root_to_dispatch(monkeypatch) -> None:
         publish=True,
         generator="codex",
         execute=True,
+        context_fixture=None,
     )
     config = build_config(tasks_root=Path("/tmp/tasks"))
 
@@ -55,11 +56,42 @@ def test_golembot_handler_passes_app_server_generator(monkeypatch) -> None:
         publish=False,
         generator="app-server",
         execute=False,
+        context_fixture=None,
     )
 
     run_event_consumer.build_handler(args, build_config())(Path("/tmp/event.json"))
 
     assert seen["generator"] == "app-server"
+
+
+def test_golembot_handler_can_use_fixture_context_reader(monkeypatch, tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+    fixture_path = tmp_path / "normalized_messages.json"
+    fixture_path.write_text(
+        '[{"message_id":"om_fixture","chat_id":"oc_group","content":"fixture context"}]\n',
+        encoding="utf-8",
+    )
+
+    def fake_dispatch(event_path: Path, **kwargs) -> None:
+        seen.update(kwargs)
+
+    monkeypatch.setattr(run_event_consumer, "dispatch_event_via_golembot", fake_dispatch)
+    args = SimpleNamespace(
+        dispatch="golembot",
+        golembot_url="http://127.0.0.1:3199",
+        golembot_token="token",
+        publish=True,
+        generator="app-server",
+        execute=True,
+        context_fixture=fixture_path,
+    )
+
+    run_event_consumer.build_handler(args, build_config())(Path("/tmp/event.json"))
+
+    context_reader = seen["context_reader"]
+    assert context_reader("oc_group", page_size=20) == [
+        {"message_id": "om_fixture", "chat_id": "oc_group", "content": "fixture context"}
+    ]
 
 
 def test_main_defaults_golembot_generator_to_app_server(monkeypatch) -> None:
