@@ -1,71 +1,71 @@
-# Realistic Group Chat Dataset and Session Governance Design
+# 真实群聊数据集与会话治理设计
 
-## Purpose
+## 目的
 
-The current MVP proves that a Feishu bot can receive an IM request, create a task, run Codex, publish Feishu office artifacts, and reply with cards. That is necessary but not enough for product validation.
+当前的 MVP 证明了飞书机器人可以接收 IM 请求、创建任务、运行 Codex、发布飞书办公文档构件，并使用卡片进行回复。但这对产品验证来说是必要的，却还不够。
 
-The real competition scenario is not "one user asks the bot to make a PPT." It is a noisy group collaboration space where multiple people discuss requirements, change their minds, share links, mention deadlines, and introduce conflicts. The agent must behave like an office pilot inside that ongoing conversation.
+真正的竞争场景不是"一个用户让机器人做一份 PPT"。而是一个嘈杂的团队协作空间，多人讨论需求、改变想法、分享链接、提及截止日期，并引入冲突。智能体必须像一个办公副驾一样，融入进行中的对话。
 
-This document records the product direction for:
+本文档记录了以下方面的产品方向：
 
-- realistic group-chat validation data
-- long-running group context
-- session/task governance
-- what controls are exposed to normal users vs operators
+- 真实的群聊验证数据
+- 长期运行的群组上下文
+- 会话/任务治理
+- 向普通用户与操作员开放哪些控制项
 
-It is a design note, not an implementation plan.
+这是一个设计笔记，而非实现计划。
 
-## Current Gap
+## 当前差距
 
-Current tests and demos are too clean:
+当前的测试和演示都过于干净：
 
-- The bot often sees a direct instruction from one user.
-- The group context is small and artificial.
-- Task/session behavior is mostly implicit.
-- There is no clear user-facing model for "new task", "continue previous task", "modify existing deliverable", or "show context".
-- The temporary web console is an engineering surface, not a product GUI.
+- 机器人通常只看到来自一个用户的直接指令。
+- 群组上下文很小且是人工构造的。
+- 任务/会话行为大多是隐式的。
+- 没有清晰的用户侧模型来处理"新任务"、"继续之前的任务"、"修改现有交付物"或"显示上下文"。
+- 临时网页控制台是一个工程界面，而非产品 GUI。
 
-This means the MVP can pass a smoke test while still failing the real product question: can it help a team turn chaotic IM collaboration into traceable office deliverables?
+这意味着 MVP 能通过冒烟测试，却依然无法回答真正的产品问题：它能否帮助一个团队将混乱的即时通讯协作转化为可追溯的办公交付物？
 
-## Realistic Validation Dataset
+## 真实验证数据集
 
-We need a deliberately messy group-chat scenario.
+我们需要一个故意设计得混乱的群聊场景。
 
-The dataset should include named roles:
+该数据集应包含具名角色：
 
-- teacher or organizer
-- team lead
-- product/design member
-- frontend member
-- backend/member responsible for integration
-- PPT/document owner
-- observer or noisy participant
-- bot
+- 老师或组织者
+- 团队负责人
+- 产品/设计成员
+- 前端成员
+- 负责集成的后端/成员
+- PPT/文档负责人
+- 观察者或爱插话的参与者
+- 机器人
 
-The conversation should include:
+对话中应包含：
 
-- real task goal
-- deadline
-- submission method
-- document requirements
-- PPT requirements
-- whiteboard or flowchart requirement
-- role assignments
-- links and attachments
-- noisy unrelated chat
-- duplicate messages
-- late corrections
-- conflicts that must not be silently resolved
+- 真实的任务目标
+- 截止日期
+- 提交方式
+- 文档要求
+- PPT 要求
+- 白板或流程图要求
+- 角色分配
+- 链接和附件
+- 无关的闲聊
+- 重复的消息
+- 迟来的更正
+- 不能默默解决的冲突
 
-Important conflicts to simulate:
+需要模拟的重要冲突包括：
 
-- PPT is 8 pages vs 10 pages.
-- Deadline is Friday 18:00 vs Saturday noon.
-- Document format is Markdown vs Word/docx.
-- Final deliverable should be Feishu Slides vs exported PPTX.
-- Whether mobile demo is required or optional.
+- PPT 是 8 页 vs 10 页。
+- 截止日期是周五 18:00 vs 周六中午。
+- 文档格式是 Markdown vs Word/docx。
+- 最终交付物应是飞书文档/幻灯片 vs 导出的 PPTX 文件。
+- 是否需要手机端演示，是可选的还是强制的。
 
-Expected repository artifacts:
+预期的仓库构件：
 
 ```text
 examples/scenarios/messy_group_chat.json
@@ -75,34 +75,34 @@ examples/scenarios/long_context_archive.jsonl
 examples/scenarios/expected_context_pack.json
 ```
 
-`messy_group_chat.json` is machine-readable fixture input.
+`messy_group_chat.json` 是可用于机器的测试输入。
 
-`messy_group_chat_script.md` is a human script that teammates can follow in a real Feishu group. Each teammate gets a role and sends messages in order, creating a realistic group history.
+`messy_group_chat_script.md` 是一个人类可读的脚本，团队成员可以在真实的飞书群中遵循它。每个团队成员获得一个角色，并按顺序发送消息，从而创建一个真实的群组历史记录。
 
-`expected_brief.json` is the oracle for what source-grounded briefing should find.
+`expected_brief.json` 是用于验证基于源材料的简报应得出什么结果的"标准答案"。
 
-`long_context_archive.jsonl` simulates a group that already has many messages before the user invokes the bot.
+`long_context_archive.jsonl` 模拟一个在用户调用机器人之前已经有许多消息的群组。
 
-`expected_context_pack.json` defines what the Bridge should select when the bot is mentioned, proving we do not feed the whole archive into Codex.
+`expected_context_pack.json` 定义了当机器人被 @ 时，Bridge 应选择哪些内容，以证明我们没有将整个存档都喂给 Codex。
 
-## Long-Running Context Model
+## 长期运行的上下文模型
 
-A real group may have hundreds or thousands of messages. A single Codex turn must not receive the full group history by default.
+一个真实的群组可能有成百上千条消息。一个 Codex 轮次绝不能默认接收完整的群组历史记录。
 
-The long-running context model should be layered:
+长期运行的上下文模型应该是分层的：
 
 ```text
-raw message archive
-  -> rolling source-grounded brief
-  -> confirmed project memory
-  -> unresolved conflicts / open questions
-  -> task-specific context pack
-  -> Codex turn
+原始消息存档
+  -> 滚动生成的、基于源材料的简报
+  -> 已确认的项目记忆
+  -> 未解决的冲突 / 待解决的问题
+  -> 任务特定的上下文包
+  -> Codex 轮次
 ```
 
-### Raw Message Archive
+### 原始消息存档
 
-All group messages should be archived with:
+所有群组消息都应归档，包含：
 
 - `message_id`
 - `chat_id`
@@ -110,109 +110,109 @@ All group messages should be archived with:
 - `sent_at`
 - `content`
 - `message_type`
-- attachments, links, files, images, cards
-- reply/thread metadata if available
+- 附件、链接、文件、图片、卡片
+- 回复/线程元数据（如果有）
 
-This is the audit source. It should not be blindly sent to Codex.
+这是审计来源。它不应被盲目地发送给 Codex。
 
-### Rolling Brief
+### 滚动简报
 
-The system should periodically summarize recent messages into source-grounded briefs.
+系统应定期将最近的消息总结为基于源材料的简报。
 
-Trigger options:
+触发选项：
 
-- every N messages
-- every time window
-- when a bot task starts
-- when an organizer/teacher sends a high-authority message
+- 每 N 条消息
+- 每个时间窗口
+- 当机器人任务开始时
+- 当组织者/老师发送高权威消息时
 
-Rolling briefs should preserve:
+滚动简报应保留：
 
-- extracted claims
-- message references
-- confidence/extraction method
-- conflicts
-- open questions
-- confirmed facts
+- 提取出的主张
+- 消息引用
+- 置信度/提取方法
+- 冲突点
+- 待解决的问题
+- 已确认的事实
 
-### Project Memory
+### 项目记忆
 
-Only confirmed information should enter project memory.
+只有已确认的信息才能进入项目记忆。
 
-Examples:
+示例：
 
-- project name
-- competition track
-- team members and roles
-- accepted deadline
-- accepted deliverable format
-- selected presentation length
-- confirmed demo story
+- 项目名称
+- 竞赛赛道
+- 团队成员及其角色
+- 已接受的截止日期
+- 已接受的交付物格式
+- 已选定的演示时长
+- 已确认的演示故事
 
-Conflicts do not enter memory until confirmed. They remain unresolved items.
+冲突在被确认之前不会进入记忆。它们会保留为未解决项。
 
-### Context Pack
+### 上下文包
 
-When a user mentions the bot, Bridge should assemble a bounded context pack:
+当用户 @ 机器人时，Bridge 应组装一个有限制的上下文包：
 
-- current user message
-- recent relevant raw messages
-- latest rolling brief
-- unresolved conflicts
-- confirmed project memory
-- active task state
-- prior artifacts
-- control log entries
+- 当前用户消息
+- 最近的相关原始消息
+- 最新的滚动简报
+- 未解决的冲突
+- 已确认的项目记忆
+- 当前活动任务状态
+- 先前的构件
+- 控制日志条目
 
-The context pack should explain what it includes and what it intentionally excludes.
+上下文包应说明它包含了什么，以及有意排除了什么。
 
-Codex should see the context pack and referenced source snippets, not the entire chat archive.
+Codex 应看到上下文包以及引用的源材料片段，而不是整个聊天存档。
 
-## Session and Task Governance
+## 会话与任务治理
 
-The product needs session governance, not just context compression.
+产品需要的不仅仅是上下文压缩，还需要会话治理。
 
-Normal users should not manage raw `task_id`, `codex_thread_id`, or `turn_id`. They should reason in terms of:
+普通用户不应管理原始的 `task_id`、`codex_thread_id` 或 `turn_id`。他们应该以如下概念进行推理：
 
-- project
-- current task
-- previous deliverable
-- new task
-- continue
-- status
-- context
+- 项目
+- 当前任务
+- 之前的交付物
+- 新任务
+- 继续
+- 状态
+- 上下文
 
-Internal mapping:
+内部映射：
 
 ```text
 chat_id
-  -> project session
-  -> task list
-  -> active task
-  -> Codex thread
-  -> active turn
-  -> artifacts
-  -> controls
+  -> 项目会话
+  -> 任务列表
+  -> 活动任务
+  -> Codex 线程
+  -> 活动轮次
+  -> 构件
+  -> 控制项
 ```
 
-## Default Routing Policy
+## 默认路由策略
 
-When a user sends a message in a group:
+当用户在群组中发送消息时：
 
-1. If there is an active Codex turn for the group, treat the message as an append/steer instruction unless it is clearly unrelated.
-2. If there is a `waiting_for_user` task, treat the message as a confirmation or clarification.
-3. If the message is a card `start_task` action, resume that waiting task.
-4. If the latest completed task is recent and the message says "刚才", "继续", "修改", or references a deliverable, treat it as a follow-up modification.
-5. If the message clearly introduces a separate objective, create a new task.
-6. If ambiguous, ask the user whether this is a new task or a modification of the previous task.
+1. 如果该群组有一个活动的 Codex 轮次，则将该消息视为追加/引导指令，除非它明显不相关。
+2. 如果存在一个 `waiting_for_user` 状态的任务，则将该消息视为确认或澄清。
+3. 如果该消息是来自卡片的 `start_task` 动作，则恢复那个等待中的任务。
+4. 如果最近完成的任务是近期内的，且消息中包含"刚才"、"继续"、"修改"或引用了某个交付物，则将其视为后续修改。
+5. 如果消息明显引入了一个独立的目标，则创建一个新任务。
+6. 如果含义模糊，则询问用户这是一个新任务还是对上一个任务的修改。
 
-The key product behavior is that uncertainty is handled by asking, not by guessing.
+关键的产品行为是：处理不确定性时应通过询问，而不是猜测。
 
-## User-Facing Commands
+## 面向用户的命令
 
-Normal group users should get a small, human-readable command surface.
+普通群组用户应该获得一个小的、人类可读的命令集。
 
-Recommended commands:
+推荐的命令：
 
 ```text
 /new
@@ -222,7 +222,7 @@ Recommended commands:
 /context
 ```
 
-Chinese equivalents should also work:
+中文版本也应起作用：
 
 ```text
 新开任务
@@ -232,110 +232,110 @@ Chinese equivalents should also work:
 你现在参考了哪些信息
 ```
 
-Meanings:
+含义：
 
-- `/new`: start a new task without inheriting the active task state.
-- `/continue`: continue the most recent task in the group.
-- `/status`: show current task state and deliverables.
-- `/close`: close/archive the current task.
-- `/context`: show which messages, briefs, artifacts, and memories will be used.
+- `/new`：启动一个新任务，不继承当前活动任务的状态。
+- `/continue`：继续该群组中最近的一个任务。
+- `/status`：显示当前任务状态和交付物。
+- `/close`：关闭/归档当前任务。
+- `/context`：显示将会使用哪些消息、简报、构件和记忆。
 
-Do not expose these to normal users:
+不要向普通用户暴露以下内容：
 
 ```text
 /resume thread_xxx
 /reset codex_session
 /debug
 /reindex
-raw task_id
-raw codex_thread_id
-raw turn_id
+原始 task_id
+原始 codex_thread_id
+原始 turn_id
 ```
 
-Those belong to the operator surface.
+这些属于操作员界面。
 
-## Operator Surface
+## 操作员界面
 
-The operator surface can expose lower-level controls:
+操作员界面可以暴露更低级别的控制项：
 
-- active task
-- Codex thread
-- active turn
-- context pack preview
-- unresolved conflicts
-- rolling brief history
-- append instruction
-- interrupt turn
-- retry task
-- archive task
-- fork task
-- force new session
-- inspect artifacts
+- 活动任务
+- Codex 线程
+- 活动轮次
+- 上下文包预览
+- 未解决的冲突
+- 滚动简报历史
+- 追加指令
+- 中断轮次
+- 重试任务
+- 归档任务
+- 分叉任务
+- 强制新建会话
+- 检查构件
 
-The operator surface should not become the planner or workflow engine. It emits controls into the existing task protocol. Python Bridge and Codex handle lifecycle and execution.
+操作员界面不应成为规划器或工作流引擎。它只是向现有任务协议发出控制指令。Python Bridge 和 Codex 负责生命周期和执行。
 
-The current web console is not a final frontend. It is only an engineering control surface. It should be frozen for now and not treated as the product GUI.
+当前的网页控制台不是最终的界面前端。它只是一个工程控制界面。现在应该冻结它，不要将其视为产品 GUI。
 
-## Real Product Flow
+## 真实产品流程
 
-Ideal group flow:
+理想的群组流程：
 
 ```text
-Team discusses in Feishu group.
-Messages accumulate in archive.
-Rolling briefs keep source-grounded state.
+团队在飞书群中讨论。
+消息在存档中累积。
+滚动简报持续保持基于源材料的状态。
 
-User mentions bot:
+用户 @ 机器人：
   "@助手 根据刚才讨论生成方案和答辩 PPT"
 
-Bridge classifies:
-  new task / continue / modify / status / context / ambiguous
+Bridge 进行分类：
+  新任务 / 继续 / 修改 / 状态 / 上下文 / 含义模糊
 
-Bridge assembles context pack:
-  current message
-  relevant recent source messages
-  latest brief
-  confirmed memory
-  unresolved conflicts
-  prior artifacts if any
+Bridge 组装上下文包：
+  当前消息
+  相关的最近源消息
+  最新的简报
+  已确认的记忆
+  未解决的冲突
+  先前的构件（如果有）
 
-If ambiguous:
-  bot asks user to confirm new task vs modify existing task
+如果含义模糊：
+  机器人询问用户确认是新任务还是修改现有任务
 
-If ready:
-  Codex runs with context pack
-  Feishu docs/slides/whiteboard are created or updated
-  delivery card is sent to group
+如果准备就绪：
+  Codex 使用上下文包运行
+  创建或更新飞书文档/幻灯片/白板
+  向群组发送交付卡片
 
-User continues:
+用户继续：
   "把刚才 PPT 改成 5 分钟答辩版"
 
-Bridge reuses previous task/thread/artifacts and creates a follow-up context pack.
+Bridge 重用之前的任务/线程/构件，并创建一个后续的上下文包。
 ```
 
-## Validation Strategy
+## 验证策略
 
-The next serious validation should not be GUI-driven.
+下一个重要的验证不应是 GUI 驱动的。
 
-Acceptance should focus on:
+验收应聚焦于：
 
-- Can a messy group chat produce a source-grounded brief?
-- Does the brief cite original messages?
-- Are conflicts preserved and surfaced?
-- Does the bot ask for confirmation instead of guessing?
-- Does `/new` or equivalent create a new task?
-- Does `/continue` or "继续刚才" resume the correct task?
-- Does `/context` show what the agent will use?
-- Does a follow-up modification reuse previous artifacts?
-- Does the operator have enough visibility to interrupt, retry, or append instructions?
+- 混乱的群聊能否产生基于源材料的简报？
+- 简报是否引用了原始消息？
+- 冲突是否被保留并呈现出来？
+- 机器人是否会要求确认而不是猜测？
+- `/new` 或类似命令是否能创建新任务？
+- `/continue` 或"继续刚才"是否能恢复正确的任务？
+- `/context` 是否能显示智能体将要使用的信息？
+- 后续的修改是否能重用之前的构件？
+- 操作员是否有足够的可见性来中断、重试或追加指令？
 
-## Near-Term Implementation Order
+## 近期实现顺序
 
-1. Add realistic group-chat fixtures and expected brief oracle.
-2. Add long-context archive fixture and expected context pack.
-3. Implement a context-pack builder around existing task protocol.
-4. Add session routing policy for `/new`, `/continue`, `/status`, `/close`, and `/context`.
-5. Add Feishu replies for `/status` and `/context`.
-6. Validate with real teammates in a Feishu group using the script.
+1. 添加真实的群聊测试用例和预期的简报标准答案。
+2. 添加长上下文存档测试用例和预期的上下文包。
+3. 在现有任务协议基础上实现上下文包构建器。
+4. 为 `/new`、`/continue`、`/status`、`/close` 和 `/context` 添加会话路由策略。
+5. 为 `/status` 和 `/context` 添加飞书回复功能。
+6. 使用脚本，让真实的团队成员在飞书群中验证。
 
-GUI redesign is intentionally deferred.
+GUI 的重新设计被有意推迟。
