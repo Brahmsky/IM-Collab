@@ -248,8 +248,9 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 - `--generator codex`：一次性 `codex exec` 兼容路径。
 - `--generator app-server`：Codex 持久 session 主路径。
   同一 `session-key` 会复用已有 `codex_thread_id`，运行中会把 `active_turn_id` 写到 `tasks/task-bindings.json`。
-此时同一飞书会话的新消息会追加到 `tasks/<task_id>/control.jsonl`，runner 轮询后调用 `turn/steer`。
-- 确认卡片按钮会产生 `card.action.trigger`，Bridge 会写入 `control.jsonl`，并在“开始执行”动作中恢复 waiting task。
+此时同一飞书会话的新消息会作为自然语言原文追加到 `tasks/<task_id>/control.jsonl`；如果当前 Codex turn 正在运行，runner 轮询后会调用 `turn/steer`。
+- Bridge 不做复杂意图分类。它只负责把消息路由到当前任务或创建新任务；用户补充、更正、追问都交给 Codex 在同一 thread/turn 里理解。
+- 确认卡片按钮会产生 `card.action.trigger`，Bridge 会写入 `control.jsonl`；只有显式 `start_task` 按钮动作会恢复 waiting task。
 
 ### 7.1 用构造群聊上下文跑测试
 
@@ -411,9 +412,9 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
   --brief-extractor langextract-deepseek
 ```
 
-如果 `brief.json` 中有 `conflict` 或 `open_question`，任务会进入 `waiting_for_user`，并写出 `confirmation.md`。同一群聊里的后续确认消息会写入 `control.jsonl`，后续继续执行或重试时 Codex 会读取这些确认信息。
+如果 `brief.json` 中有 `conflict` 或 `open_question`，任务会进入 `waiting_for_user`，并写出 `confirmation.md`。同一群聊里的后续文本会按 `append_instruction` 原样写入 `control.jsonl`；后续继续执行或重试时 Codex 会读取这些补充信息。
 
-如果用户在同一群聊里明确说“开始执行 / 开始生成 / 确认开始”，Bridge 会复用原 `task_id`，读取已经记录的确认信息，继续生成并发布产物。
+普通群聊文本不会因为包含“开始执行 / 开始生成 / 确认开始”等词而被 Bridge 当成工作流命令。要恢复 waiting task，使用确认卡片里的“开始执行”按钮，或在控制台执行 retry/continue 类操作。这样做是为了让 Bridge 保持为会话路由和状态账本，不把自然语言意图分类做在 Python 侧。
 
 等待确认的任务还会写出 `confirmation_card.json`，包含“开始执行”和“补充要求”按钮动作值。事件分发会优先用飞书 interactive 消息发送这张卡片；如果卡片文件不存在，才回退到 Markdown。
 

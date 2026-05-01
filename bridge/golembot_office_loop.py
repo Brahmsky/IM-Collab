@@ -233,7 +233,7 @@ def _append_confirmation_controls_to_request(task_dir: Path) -> None:
     confirmation_commands = [
         command
         for command in read_control_commands(task_dir)
-        if command.get("type") in {"confirm_instruction", "card_action"}
+        if command.get("type") in {"append_instruction", "confirm_instruction", "card_action"}
     ]
     if not confirmation_commands:
         return

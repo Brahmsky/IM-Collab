@@ -310,7 +310,7 @@ def test_run_golembot_office_task_exposes_active_turn_while_app_server_runs(tmp_
     assert final_binding["active_turn_id"] is None
 
 
-def test_resumed_waiting_task_includes_control_confirmations_in_request(tmp_path: Path) -> None:
+def test_resumed_waiting_task_includes_natural_language_controls_in_request(tmp_path: Path) -> None:
     task_dir = tmp_path / "waiting-task"
     task_dir.mkdir(parents=True)
     (task_dir / "request.md").write_text("# Existing request\n", encoding="utf-8")
@@ -327,6 +327,17 @@ def test_resumed_waiting_task_includes_control_confirmations_in_request(tmp_path
         encoding="utf-8",
     )
     (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:00:30+00:00",
+                "type": "append_instruction",
+                "operator": "feishu",
+                "payload": {"text": "补充：PPT 按 8 页做，移动端同步也要写进验收。"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+        +
         json.dumps(
             {
                 "timestamp": "2026-04-28T01:01:00+00:00",
@@ -353,5 +364,7 @@ def test_resumed_waiting_task_includes_control_confirmations_in_request(tmp_path
 
     request = (task_dir / "request.md").read_text(encoding="utf-8")
     assert "## Confirmation Controls" in request
+    assert "append_instruction" in request
+    assert "PPT 按 8 页做" in request
     assert "card_action" in request
     assert "start_task" in request

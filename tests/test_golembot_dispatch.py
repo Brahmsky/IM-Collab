@@ -462,7 +462,7 @@ def test_dispatch_group_message_appends_instruction_to_active_turn(tmp_path: Pat
     assert command["payload"]["active_turn_id"] == "turn_live"
 
 
-def test_dispatch_group_message_appends_confirmation_to_waiting_task(tmp_path: Path) -> None:
+def test_dispatch_group_message_appends_natural_language_to_waiting_task(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"
     task_dir = tasks_root / "im-om_waiting"
@@ -537,17 +537,17 @@ def test_dispatch_group_message_appends_confirmation_to_waiting_task(tmp_path: P
     )
 
     assert "office_kwargs" not in seen
-    assert "已记录这条确认" in seen["reply"]["markdown"]
+    assert "我会把这条补充进当前任务" in seen["reply"]["markdown"]
     assert result["task_id"] == "im-om_waiting"
     [command] = [
         json.loads(line)
         for line in (task_dir / "control.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert command["type"] == "confirm_instruction"
+    assert command["type"] == "append_instruction"
     assert command["payload"]["text"] == "确认按 8 页 PPT 执行"
 
 
-def test_dispatch_group_start_message_runs_waiting_task_and_publishes(tmp_path: Path) -> None:
+def test_dispatch_group_start_message_does_not_semantically_resume_waiting_task(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"
     task_dir = tasks_root / "im-om_waiting"
@@ -641,17 +641,18 @@ def test_dispatch_group_start_message_runs_waiting_task_and_publishes(tmp_path: 
         card_replier=fake_card_replier,
     )
 
-    assert seen["office_kwargs"]["task_id"] == "im-om_waiting"
-    assert seen["office_kwargs"]["conversation_context"] == []
-    assert seen["published_task_dir"] == task_dir
-    assert "markdown_reply" not in seen
-    assert seen["card_reply"]["card_path"] == task_dir / "delivery_card.json"
-    assert result["task"]["task_id"] == "im-om_waiting"
+    assert "office_kwargs" not in seen
+    assert "published_task_dir" not in seen
+    assert "card_reply" not in seen
+    assert seen["reply"]["message_id"] == "om_start"
+    assert "我会把这条补充进当前任务" in seen["reply"]["markdown"]
+    assert result["task_id"] == "im-om_waiting"
     commands = [
         json.loads(line)
         for line in (task_dir / "control.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert commands[0]["type"] == "confirm_instruction"
+    assert commands[0]["type"] == "append_instruction"
+    assert commands[0]["payload"]["text"] == "确认开始执行，按 8 页 PPT 做"
 
 
 def test_dispatch_event_routes_mojibake_office_request_outside_golembot(tmp_path: Path) -> None:

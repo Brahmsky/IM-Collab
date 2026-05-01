@@ -73,9 +73,10 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
 After that:
 
 - New Feishu messages in the same session can target the existing `codex_thread_id`.
-- If a turn is active, send `turn/steer`.
+- IM follow-up text is kept as natural language `append_instruction`; the Bridge does not classify it into semantic workflow intents.
+- If a turn is active, send that natural language to `turn/steer`.
 - If no turn is active, send `turn/start` on the existing thread.
-- GUI controls can call `turn/interrupt` or append instructions through the same backend.
+- Explicit UI/operator controls can call `turn/interrupt`, resume a waiting task, or append instructions through the same backend.
 
 ## Risks
 
