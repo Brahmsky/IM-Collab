@@ -3,6 +3,7 @@ from __future__ import annotations
 from bridge.group_briefing import (
     build_confirmation_card,
     build_group_brief,
+    build_group_brief_from_evidence,
     render_group_brief_markdown,
     validate_group_brief,
 )
@@ -110,3 +111,35 @@ def test_build_confirmation_card_contains_start_action_and_message_refs() -> Non
     assert "om_1" in str(card)
     assert "om_2" in str(card)
     assert {"tag": "button", "text": {"tag": "plain_text", "content": "开始执行"}, "type": "primary", "value": {"action": "start_task", "task_id": "im-om_123"}} in card["elements"]
+
+
+def test_build_group_brief_from_evidence_uses_external_extractor_without_rule_merging() -> None:
+    brief = build_group_brief_from_evidence(
+        chat_id="oc_group",
+        messages=[
+            {"message_id": "om_1", "sender": "老师", "content": "周五 18:00 前提交。"},
+            {"message_id": "om_2", "sender": "同学", "content": "项目名称还没定。"},
+        ],
+        evidence_items=[
+            {
+                "kind": "deadline",
+                "claim": "正式提交截止为周五 18:00",
+                "source_message_ids": ["om_1"],
+                "confidence": "high",
+                "extractor": "langextract-deepseek-v4-flash",
+            },
+            {
+                "kind": "open_question",
+                "claim": "项目名称仍需确认",
+                "source_message_ids": ["om_2"],
+                "confidence": "medium",
+                "extractor": "langextract-deepseek-v4-flash",
+            },
+        ],
+    )
+
+    validate_group_brief(brief)
+    assert [annotation["type"] for annotation in brief["annotations"]] == ["deadline", "open_question"]
+    assert brief["annotations"][0]["annotation_id"] == "lx_001"
+    assert brief["annotations"][1]["needs_confirmation"] is True
+    assert brief["summary"]["deadlines"][0]["claim"] == "正式提交截止为周五 18:00"

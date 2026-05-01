@@ -35,6 +35,23 @@ def build_group_brief(chat_id: str, messages: list[dict[str, Any]]) -> dict[str,
     return brief
 
 
+def build_group_brief_from_evidence(
+    chat_id: str,
+    messages: list[dict[str, Any]],
+    evidence_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    source_messages = [_normalize_message(index, message) for index, message in enumerate(messages, start=1)]
+    annotations = [_annotation_from_evidence(index, item) for index, item in enumerate(evidence_items, start=1)]
+    brief = {
+        "chat_id": chat_id,
+        "source_messages": source_messages,
+        "annotations": annotations,
+        "summary": _summary_from_annotations(annotations, source_message_count=len(source_messages)),
+    }
+    validate_group_brief(brief)
+    return brief
+
+
 def validate_group_brief(brief: dict[str, Any]) -> None:
     message_ids = {message.get("message_id") for message in brief.get("source_messages", [])}
     for annotation in brief.get("annotations", []):
@@ -265,6 +282,20 @@ def _annotation(
         "evidence_message_ids": [message["message_id"]],
         "confidence": confidence,
         "needs_confirmation": needs_confirmation,
+    }
+
+
+def _annotation_from_evidence(number: int, evidence: dict[str, Any]) -> dict[str, Any]:
+    annotation_type = str(evidence.get("kind") or "")
+    needs_confirmation = annotation_type in {"conflict", "open_question"} or evidence.get("needs_confirmation") is True
+    return {
+        "annotation_id": f"lx_{number:03d}",
+        "type": annotation_type,
+        "claim": str(evidence.get("claim") or evidence.get("source_text") or ""),
+        "evidence_message_ids": [str(message_id) for message_id in evidence.get("source_message_ids", [])],
+        "confidence": str(evidence.get("confidence") or "medium"),
+        "needs_confirmation": needs_confirmation,
+        "extractor": str(evidence.get("extractor") or "external"),
     }
 
 

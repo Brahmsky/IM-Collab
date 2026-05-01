@@ -363,6 +363,34 @@ rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 
 群聊任务会在生成正式产物前先写 `brief.json` 和 `brief.md`。后续文档、PPT、白板应优先使用这两个文件里的证据，不要直接凭原始群聊自由发挥。
 
+可选实验：LangExtract + DeepSeek V4 Flash 可以作为群聊旁批汇总前的证据抽取器。它不替代 Codex、app-server、任务协议或飞书交付，只负责把标准群聊上下文抽成 `evidence.json`。默认主链路仍使用本地规则型 `group_briefing`。
+
+安装可选依赖：
+
+```bash
+rtk .venv/bin/pip install -r requirements-langextract.txt
+```
+
+先检查会发送给 LangExtract 的源文本，不需要 API key：
+
+```bash
+rtk .venv/bin/python scripts/extract_group_briefing_evidence.py \
+  --context-fixture examples/scenarios/group_briefing/course_project_conflict/context.json \
+  --output /tmp/group-briefing-source.json \
+  --render-source
+```
+
+配置 DeepSeek key 后真实抽取：
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+rtk .venv/bin/python scripts/extract_group_briefing_evidence.py \
+  --context-fixture examples/scenarios/group_briefing/course_project_conflict/context.json \
+  --output /tmp/group-briefing-evidence.json
+```
+
+模型默认是 `deepseek-v4-flash`，通过 LangExtract 的 OpenAI provider 访问 `https://api.deepseek.com`。抽取结果进入我们自己的 evidence 格式；后续由 `build_group_brief_from_evidence()` 转成 `brief.json`。
+
 如果 `brief.json` 中有 `conflict` 或 `open_question`，任务会进入 `waiting_for_user`，并写出 `confirmation.md`。同一群聊里的后续确认消息会写入 `control.jsonl`，后续继续执行或重试时 Codex 会读取这些确认信息。
 
 如果用户在同一群聊里明确说“开始执行 / 开始生成 / 确认开始”，Bridge 会复用原 `task_id`，读取已经记录的确认信息，继续生成并发布产物。
