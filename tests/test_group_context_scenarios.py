@@ -14,6 +14,7 @@ def test_standard_group_briefing_scenarios_are_loadable() -> None:
     assert [path.parent.name for path in scenario_paths] == [
         "client_launch_review_long_context",
         "course_project_conflict",
+        "grant_application_ultra_long_context",
     ]
     for scenario_path in scenario_paths:
         messages = build_standard_group_context(scenario_path)
@@ -48,3 +49,22 @@ def test_long_context_scenario_can_be_windowed_for_future_selection_tests() -> N
     assert len(latest) == 12
     assert latest[0]["message_id"] == messages[-12]["message_id"]
     assert latest[-1]["message_id"] == messages[-1]["message_id"]
+
+
+def test_grant_application_ultra_long_context_has_rich_material_surface() -> None:
+    scenario_dir = SCENARIO_ROOT / "grant_application_ultra_long_context"
+    messages = build_standard_group_context(scenario_dir / "context.json")
+    expected = json.loads((scenario_dir / "expected_brief.json").read_text(encoding="utf-8"))
+    message_ids = {message["message_id"] for message in messages}
+    attachments = [attachment for message in messages for attachment in message.get("attachments", [])]
+
+    assert len(messages) >= 60
+    assert len({message["sender_id"] for message in messages}) >= 8
+    assert len(attachments) >= 8
+    assert any(attachment.get("name", "").endswith(".pptx") for attachment in attachments)
+    assert expected["scenario_id"] == "grant_application_ultra_long_context"
+    assert len(expected["facts"]) >= 8
+    assert len(expected["conflicts"]) >= 3
+    assert len(expected["open_questions"]) >= 2
+    for item in expected["facts"] + expected["conflicts"] + expected["open_questions"]:
+        assert set(item["source_message_ids"]) <= message_ids

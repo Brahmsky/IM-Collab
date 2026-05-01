@@ -1,0 +1,1173 @@
+{
+  "scenario_id": "grant_application_ultra_long_context",
+  "description": "一周以上、多方参与的项目经费申请材料协作群聊，包含预算、申请书、证明函、导师意见、团队表和PPT等多个材料版本。",
+  "long_context_hook": {
+    "purpose": "压力测试 source-grounded briefing 在超长群聊中识别最终版本、冲突更正和材料包完整性的能力。",
+    "candidate_selection_signals": [
+      "formal_notice",
+      "deadline",
+      "budget_rule",
+      "latest",
+      "final",
+      "correction",
+      "open_question",
+      "attachment"
+    ]
+  },
+  "messages": [
+    {
+      "message_id": "om_grant_001",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-20T09:05:00+08:00",
+      "message_type": "text",
+      "content": "各位，本轮“高校创新实践项目经费申请”开始收材料。每个团队需要提交：项目申请书、经费预算表、预算说明、团队成员表、导师推荐意见、合作单位证明、3-5页路演PPT。系统初始截止时间是 4 月 29 日 18:00。",
+      "tags": [
+        "formal_notice",
+        "deadline"
+      ]
+    },
+    {
+      "message_id": "om_grant_002",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-20T09:12:00+08:00",
+      "message_type": "text",
+      "content": "收到。我先建一个材料清单，大家这周把经费申请材料收齐。",
+      "tags": [
+        "coordination"
+      ]
+    },
+    {
+      "message_id": "om_grant_003",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-20T09:20:00+08:00",
+      "message_type": "text",
+      "content": "我负责预算表和预算说明。先提醒一下，经费总额听说不能超过 3 万。",
+      "tags": [
+        "budget"
+      ]
+    },
+    {
+      "message_id": "om_grant_004",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-20T09:31:00+08:00",
+      "message_type": "text",
+      "content": "我负责申请书里的研究背景、目标和调研基础。已有用户调研数据可以放进去。"
+    },
+    {
+      "message_id": "om_grant_005",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_ppt",
+      "sender": "林澈",
+      "role": "slides_owner",
+      "sent_at": "2026-04-20T09:44:00+08:00",
+      "message_type": "text",
+      "content": "PPT 我来做。老师刚说 3-5 页，我先按 5 页控制。",
+      "tags": [
+        "slides"
+      ]
+    },
+    {
+      "message_id": "om_grant_006",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lab",
+      "sender": "许宁",
+      "role": "lab_manager",
+      "sent_at": "2026-04-20T10:10:00+08:00",
+      "message_type": "text",
+      "content": "设备清单我这里有，激光测距仪、传感器套件、测试耗材都可以列。"
+    },
+    {
+      "message_id": "om_grant_007",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-20T10:30:00+08:00",
+      "message_type": "text",
+      "content": "注意申请书不要写成商业计划书，重点是创新实践、学生训练、可验证成果。",
+      "tags": [
+        "authority"
+      ]
+    },
+    {
+      "message_id": "om_grant_008",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-20T11:00:00+08:00",
+      "message_type": "file",
+      "content": "我把旧版模板上传，先别直接套格式，等科研办确认新版。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "2025创新实践项目申请书旧模板.docx",
+          "file_key": "file_old_application_template"
+        }
+      ],
+      "tags": [
+        "attachment"
+      ]
+    },
+    {
+      "message_id": "om_grant_009",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-20T14:00:00+08:00",
+      "message_type": "text",
+      "content": "预算草案：设备 18000，耗材 7000，调研交通 4000，合计 29000。"
+    },
+    {
+      "message_id": "om_grant_010",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lab",
+      "sender": "许宁",
+      "role": "lab_manager",
+      "sent_at": "2026-04-20T14:18:00+08:00",
+      "message_type": "text",
+      "content": "设备 18000 里面有一台 9800 的边缘计算盒子，这个可能算固定资产吗？",
+      "tags": [
+        "open_question"
+      ]
+    },
+    {
+      "message_id": "om_grant_011",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-20T15:40:00+08:00",
+      "message_type": "text",
+      "content": "补充：预算中单价超过 8000 元的设备需要单独说明必要性，并且原则上不建议采购固定资产。",
+      "tags": [
+        "formal_notice",
+        "budget_rule"
+      ]
+    },
+    {
+      "message_id": "om_grant_012",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-20T16:05:00+08:00",
+      "message_type": "text",
+      "content": "那边缘计算盒子要么降配，要么写必要性说明。这个先标待确认。",
+      "tags": [
+        "open_question"
+      ]
+    },
+    {
+      "message_id": "om_grant_013",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-21T09:02:00+08:00",
+      "message_type": "file",
+      "content": "我发第一版申请书大纲：背景、痛点、方案、实施计划、预期成果、经费预算。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "项目申请书_v0.1.docx",
+          "file_key": "file_application_v01"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "document"
+      ]
+    },
+    {
+      "message_id": "om_grant_014",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-21T09:25:00+08:00",
+      "message_type": "text",
+      "content": "申请书里成果指标要具体，例如完成原型系统、形成1份调研报告、完成1次公开路演。",
+      "tags": [
+        "requirement"
+      ]
+    },
+    {
+      "message_id": "om_grant_015",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-21T10:00:00+08:00",
+      "message_type": "text",
+      "content": "我们公司可以提供真实门店试点场景和访谈对象，但证明函需要你们给模板。",
+      "tags": [
+        "partner"
+      ]
+    },
+    {
+      "message_id": "om_grant_016",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-21T10:22:00+08:00",
+      "message_type": "text",
+      "content": "合作单位证明函我来起草模板，陈经理帮忙盖章。"
+    },
+    {
+      "message_id": "om_grant_017",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_ppt",
+      "sender": "林澈",
+      "role": "slides_owner",
+      "sent_at": "2026-04-21T11:15:00+08:00",
+      "message_type": "file",
+      "content": "PPT 初稿我放这里，5 页：问题、方案、创新点、计划、预算。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "经费申请路演PPT_v0.1.pptx",
+          "file_key": "file_grant_ppt_v01"
+        }
+      ],
+      "tags": [
+        "slides",
+        "attachment"
+      ]
+    },
+    {
+      "message_id": "om_grant_018",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-21T13:20:00+08:00",
+      "message_type": "file",
+      "content": "预算表第一版上传。注意里面总额还是 29000。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "经费预算表_v0.1.xlsx",
+          "file_key": "file_budget_v01"
+        }
+      ],
+      "tags": [
+        "budget",
+        "attachment"
+      ]
+    },
+    {
+      "message_id": "om_grant_019",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-21T14:00:00+08:00",
+      "message_type": "text",
+      "content": "提醒：经费预算表请用今年新版 Excel 模板，旧版字段不接受导入。",
+      "tags": [
+        "formal_notice",
+        "conflict"
+      ]
+    },
+    {
+      "message_id": "om_grant_020",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-21T14:08:00+08:00",
+      "message_type": "text",
+      "content": "那我刚上传的是旧版模板，先不要用了，我晚上按新版重填。",
+      "tags": [
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_021",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-21T15:30:00+08:00",
+      "message_type": "file",
+      "content": "新版预算表模板见附件。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "2026创新实践经费预算表模板.xlsx",
+          "file_key": "file_budget_template_2026"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "template"
+      ]
+    },
+    {
+      "message_id": "om_grant_022",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-21T16:45:00+08:00",
+      "message_type": "text",
+      "content": "预算说明里每一类经费都要对应项目任务，不能只有金额。",
+      "tags": [
+        "requirement"
+      ]
+    },
+    {
+      "message_id": "om_grant_023",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-22T09:05:00+08:00",
+      "message_type": "file",
+      "content": "新版预算表已重填：设备 15500，耗材 8500，调研交通 3000，资料打印 1000，总额 28000。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "经费预算表_v0.2_新版模板.xlsx",
+          "file_key": "file_budget_v02"
+        }
+      ],
+      "tags": [
+        "budget",
+        "correction",
+        "attachment"
+      ]
+    },
+    {
+      "message_id": "om_grant_024",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lab",
+      "sender": "许宁",
+      "role": "lab_manager",
+      "sent_at": "2026-04-22T09:40:00+08:00",
+      "message_type": "text",
+      "content": "设备里边缘盒子改成租赁云算力，不买硬件，固定资产风险下降。"
+    },
+    {
+      "message_id": "om_grant_025",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-22T10:12:00+08:00",
+      "message_type": "file",
+      "content": "申请书 v0.2 更新了研究目标和成果指标。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "项目申请书_v0.2.docx",
+          "file_key": "file_application_v02"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "document"
+      ]
+    },
+    {
+      "message_id": "om_grant_026",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-22T11:00:00+08:00",
+      "message_type": "text",
+      "content": "大家注意：现在有效版本是申请书 v0.2、预算表 v0.2、PPT v0.1。"
+    },
+    {
+      "message_id": "om_grant_027",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-22T13:30:00+08:00",
+      "message_type": "text",
+      "content": "合作证明函我这边可以盖章，但单位名称请写“杭州北桥数字科技有限公司”，不要写简称。",
+      "tags": [
+        "requirement",
+        "partner"
+      ]
+    },
+    {
+      "message_id": "om_grant_028",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-22T14:05:00+08:00",
+      "message_type": "text",
+      "content": "收到，合作单位全称是杭州北桥数字科技有限公司。"
+    },
+    {
+      "message_id": "om_grant_029",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_ppt",
+      "sender": "林澈",
+      "role": "slides_owner",
+      "sent_at": "2026-04-22T16:20:00+08:00",
+      "message_type": "text",
+      "content": "PPT 里预算页需要更新成 28000，我晚点改。"
+    },
+    {
+      "message_id": "om_grant_030",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-23T09:15:00+08:00",
+      "message_type": "text",
+      "content": "重要更正：系统截止时间从 4 月 29 日 18:00 提前到 4 月 28 日 20:00。纸质签字页可以在 4 月 29 日 12:00 前补交到科研办。",
+      "tags": [
+        "formal_notice",
+        "deadline",
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_031",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-23T09:22:00+08:00",
+      "message_type": "text",
+      "content": "所以电子材料截止是 4 月 28 日 20:00，纸质签字页 4 月 29 日中午前。这个别混。",
+      "tags": [
+        "decision",
+        "deadline"
+      ]
+    },
+    {
+      "message_id": "om_grant_032",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-23T10:00:00+08:00",
+      "message_type": "text",
+      "content": "导师推荐意见我今晚写，但你们需要先给我最新版申请书。"
+    },
+    {
+      "message_id": "om_grant_033",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-23T11:30:00+08:00",
+      "message_type": "file",
+      "content": "最新版申请书 v0.3 上传，新增预期成果和风险控制。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "项目申请书_v0.3.docx",
+          "file_key": "file_application_v03"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "document",
+        "latest"
+      ]
+    },
+    {
+      "message_id": "om_grant_034",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-23T13:00:00+08:00",
+      "message_type": "file",
+      "content": "预算说明 v0.1 上传，对应预算表 v0.2。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "预算说明_v0.1.docx",
+          "file_key": "file_budget_note_v01"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "budget"
+      ]
+    },
+    {
+      "message_id": "om_grant_035",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lab",
+      "sender": "许宁",
+      "role": "lab_manager",
+      "sent_at": "2026-04-23T13:40:00+08:00",
+      "message_type": "text",
+      "content": "耗材 8500 里有 1200 的备用件，是否会被认为不必要？",
+      "tags": [
+        "open_question"
+      ]
+    },
+    {
+      "message_id": "om_grant_036",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-23T14:10:00+08:00",
+      "message_type": "text",
+      "content": "备用件可以留，但要写成原型迭代损耗，不要写备用。",
+      "tags": [
+        "requirement",
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_037",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_ppt",
+      "sender": "林澈",
+      "role": "slides_owner",
+      "sent_at": "2026-04-23T15:00:00+08:00",
+      "message_type": "file",
+      "content": "PPT v0.2 更新预算 28000，并加入合作单位试点场景。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "经费申请路演PPT_v0.2.pptx",
+          "file_key": "file_grant_ppt_v02"
+        }
+      ],
+      "tags": [
+        "slides",
+        "attachment",
+        "latest"
+      ]
+    },
+    {
+      "message_id": "om_grant_038",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-23T16:45:00+08:00",
+      "message_type": "text",
+      "content": "材料命名规则：团队编号-项目名称-材料类型，例如 A17-社区服务智能助手-申请书.docx。",
+      "tags": [
+        "formal_notice",
+        "submission_method"
+      ]
+    },
+    {
+      "message_id": "om_grant_039",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-24T09:00:00+08:00",
+      "message_type": "text",
+      "content": "项目名称先用“社区服务智能助手”。"
+    },
+    {
+      "message_id": "om_grant_040",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-24T09:25:00+08:00",
+      "message_type": "file",
+      "content": "团队成员表我补好了，学号和学院都在。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "团队成员表_v0.1.xlsx",
+          "file_key": "file_team_v01"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "document"
+      ]
+    },
+    {
+      "message_id": "om_grant_041",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-24T10:10:00+08:00",
+      "message_type": "file",
+      "content": "我发导师推荐意见草稿，语气你们不要改，只检查项目信息。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "导师推荐意见_王老师_v0.1.docx",
+          "file_key": "file_advisor_recommendation_v01"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "document"
+      ]
+    },
+    {
+      "message_id": "om_grant_042",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-24T11:00:00+08:00",
+      "message_type": "text",
+      "content": "合作证明函盖章版下午给。"
+    },
+    {
+      "message_id": "om_grant_043",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-24T13:30:00+08:00",
+      "message_type": "file",
+      "content": "盖章版证明函已发，请确认公司全称和项目名称。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "合作单位证明函_盖章版.pdf",
+          "file_key": "file_partner_letter_signed"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "partner",
+        "latest"
+      ]
+    },
+    {
+      "message_id": "om_grant_044",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-24T14:00:00+08:00",
+      "message_type": "text",
+      "content": "证明函里项目名称写成“社区智能服务助手”，少了“服务”顺序也不一样，这个需要改吗？",
+      "tags": [
+        "open_question",
+        "conflict"
+      ]
+    },
+    {
+      "message_id": "om_grant_045",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-24T14:22:00+08:00",
+      "message_type": "text",
+      "content": "项目名称在所有材料中必须完全一致，否则系统查重会提示异常。",
+      "tags": [
+        "formal_notice",
+        "conflict"
+      ]
+    },
+    {
+      "message_id": "om_grant_046",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-24T14:40:00+08:00",
+      "message_type": "text",
+      "content": "那我重新盖一版，项目名称按“社区服务智能助手”。"
+    },
+    {
+      "message_id": "om_grant_047",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-24T16:10:00+08:00",
+      "message_type": "file",
+      "content": "重新盖章版证明函上传。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "合作单位证明函_盖章版_v2.pdf",
+          "file_key": "file_partner_letter_signed_v2"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "partner",
+        "latest",
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_048",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-25T09:10:00+08:00",
+      "message_type": "file",
+      "content": "预算说明 v0.2 上传，已把备用件改成原型迭代损耗。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "预算说明_v0.2.docx",
+          "file_key": "file_budget_note_v02"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "budget",
+        "latest",
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_049",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-25T10:20:00+08:00",
+      "message_type": "text",
+      "content": "系统提交包必须包含：申请书、预算表、预算说明、团队成员表、导师推荐意见、合作单位证明函、路演PPT。签字页纸质另交。",
+      "tags": [
+        "formal_notice",
+        "submission_method"
+      ]
+    },
+    {
+      "message_id": "om_grant_050",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-25T11:00:00+08:00",
+      "message_type": "text",
+      "content": "材料清单现在是 7 个电子文件 + 纸质签字页。"
+    },
+    {
+      "message_id": "om_grant_051",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-25T13:20:00+08:00",
+      "message_type": "text",
+      "content": "申请书最后一页需要导师电子签名截图，纸质签字页另交不等于电子签名可以缺。",
+      "tags": [
+        "requirement",
+        "open_question"
+      ]
+    },
+    {
+      "message_id": "om_grant_052",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-25T14:10:00+08:00",
+      "message_type": "file",
+      "content": "我把导师电子签名截图加到申请书 v0.4。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "项目申请书_v0.4_含导师签名.docx",
+          "file_key": "file_application_v04_signed"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "document",
+        "latest",
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_053",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_ppt",
+      "sender": "林澈",
+      "role": "slides_owner",
+      "sent_at": "2026-04-25T15:30:00+08:00",
+      "message_type": "file",
+      "content": "PPT v0.3 上传，5页以内，预算页和合作方都更新。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "经费申请路演PPT_v0.3_final.pptx",
+          "file_key": "file_grant_ppt_v03_final"
+        }
+      ],
+      "tags": [
+        "slides",
+        "attachment",
+        "latest"
+      ]
+    },
+    {
+      "message_id": "om_grant_054",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-26T09:00:00+08:00",
+      "message_type": "text",
+      "content": "我今天开始按命名规则改文件名，最终包暂定 A17-社区服务智能助手-材料类型。"
+    },
+    {
+      "message_id": "om_grant_055",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-26T10:30:00+08:00",
+      "message_type": "text",
+      "content": "预算表最终版我确认是 v0.2，总额 28000，不要再用 29000 那版。",
+      "tags": [
+        "budget",
+        "correction"
+      ]
+    },
+    {
+      "message_id": "om_grant_056",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-26T11:20:00+08:00",
+      "message_type": "text",
+      "content": "提醒：预算总额不能超过 30000，且系统金额必须和预算说明完全一致。",
+      "tags": [
+        "formal_notice",
+        "budget_rule"
+      ]
+    },
+    {
+      "message_id": "om_grant_057",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-26T13:00:00+08:00",
+      "message_type": "text",
+      "content": "申请书里预算写的是 28000，我检查过。"
+    },
+    {
+      "message_id": "om_grant_058",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lab",
+      "sender": "许宁",
+      "role": "lab_manager",
+      "sent_at": "2026-04-26T14:15:00+08:00",
+      "message_type": "text",
+      "content": "云算力租赁是否需要合同？",
+      "tags": [
+        "open_question"
+      ]
+    },
+    {
+      "message_id": "om_grant_059",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-26T14:40:00+08:00",
+      "message_type": "text",
+      "content": "本轮申请阶段不需要合同，但需要在预算说明里写清楚购买服务的用途和周期。",
+      "tags": [
+        "formal_notice",
+        "answer"
+      ]
+    },
+    {
+      "message_id": "om_grant_060",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-27T09:30:00+08:00",
+      "message_type": "text",
+      "content": "我整理了最终包清单，大家看看有没有漏：申请书v0.4、预算表v0.2、预算说明v0.2、团队成员表v0.1、导师推荐意见v0.1、合作证明函v2、PPTv0.3。",
+      "tags": [
+        "decision",
+        "deliverable"
+      ]
+    },
+    {
+      "message_id": "om_grant_061",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-27T10:00:00+08:00",
+      "message_type": "text",
+      "content": "清单对。提交前把“社区服务智能助手”名称统一再搜一遍。",
+      "tags": [
+        "authority"
+      ]
+    },
+    {
+      "message_id": "om_grant_062",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-27T11:45:00+08:00",
+      "message_type": "text",
+      "content": "合作证明函 v2 名称我确认没问题。"
+    },
+    {
+      "message_id": "om_grant_063",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_ppt",
+      "sender": "林澈",
+      "role": "slides_owner",
+      "sent_at": "2026-04-27T15:00:00+08:00",
+      "message_type": "file",
+      "content": "PPT 文件已经按命名规则改名。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-路演PPT.pptx",
+          "file_key": "file_named_ppt"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "final"
+      ]
+    },
+    {
+      "message_id": "om_grant_064",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-27T16:30:00+08:00",
+      "message_type": "text",
+      "content": "明天 18:00 前我先上传，留两小时处理系统问题。"
+    },
+    {
+      "message_id": "om_grant_065",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_finance",
+      "sender": "周岚",
+      "role": "finance_officer",
+      "sent_at": "2026-04-28T09:10:00+08:00",
+      "message_type": "file",
+      "content": "预算表和预算说明最终命名版上传。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-预算表.xlsx",
+          "file_key": "file_named_budget"
+        },
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-预算说明.docx",
+          "file_key": "file_named_budget_note"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "final"
+      ]
+    },
+    {
+      "message_id": "om_grant_066",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_research",
+      "sender": "余舟",
+      "role": "research_owner",
+      "sent_at": "2026-04-28T10:20:00+08:00",
+      "message_type": "file",
+      "content": "申请书和团队成员表最终命名版上传。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-申请书.docx",
+          "file_key": "file_named_application"
+        },
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-团队成员表.xlsx",
+          "file_key": "file_named_team"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "final"
+      ]
+    },
+    {
+      "message_id": "om_grant_067",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_advisor",
+      "sender": "王老师",
+      "role": "advisor",
+      "sent_at": "2026-04-28T10:50:00+08:00",
+      "message_type": "file",
+      "content": "导师推荐意见最终命名版上传。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-导师推荐意见.docx",
+          "file_key": "file_named_advisor"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "final"
+      ]
+    },
+    {
+      "message_id": "om_grant_068",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_partner",
+      "sender": "产业合作方陈经理",
+      "role": "external_partner",
+      "sent_at": "2026-04-28T11:30:00+08:00",
+      "message_type": "file",
+      "content": "合作证明函最终命名版上传。",
+      "attachments": [
+        {
+          "type": "file",
+          "name": "A17-社区服务智能助手-合作单位证明函.pdf",
+          "file_key": "file_named_partner_letter"
+        }
+      ],
+      "tags": [
+        "attachment",
+        "final"
+      ]
+    },
+    {
+      "message_id": "om_grant_069",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-28T13:20:00+08:00",
+      "message_type": "text",
+      "content": "最终电子包 7 个文件都齐了。纸质签字页明天中午前交。"
+    },
+    {
+      "message_id": "om_grant_070",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_office",
+      "sender": "科研办赵老师",
+      "role": "research_office",
+      "sent_at": "2026-04-28T15:00:00+08:00",
+      "message_type": "text",
+      "content": "系统今晚 20:00 自动关闭，建议 19:30 前完成提交。",
+      "tags": [
+        "formal_notice",
+        "deadline"
+      ]
+    },
+    {
+      "message_id": "om_grant_071",
+      "chat_id": "oc_grant_application",
+      "chat_type": "group",
+      "sender_id": "ou_lead",
+      "sender": "李飞",
+      "role": "project_lead",
+      "sent_at": "2026-04-28T16:10:00+08:00",
+      "message_type": "text",
+      "content": "@飞书 CLI 请基于这一周群聊，生成经费申请材料 source-grounded brief：最终截止时间、提交包清单、有效文件版本、预算口径、PPT要求、分工、冲突更正和仍需确认事项都要引用原消息。",
+      "tags": [
+        "bot_request"
+      ]
+    }
+  ]
+}

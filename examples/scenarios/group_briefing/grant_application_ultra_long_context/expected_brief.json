@@ -1,0 +1,159 @@
+{
+  "scenario_id": "grant_application_ultra_long_context",
+  "facts": [
+    {
+      "kind": "deadline",
+      "summary": "电子材料系统截止时间最终提前为 2026-04-28 20:00，建议 19:30 前完成提交；纸质签字页可在 2026-04-29 12:00 前补交。",
+      "source_message_ids": [
+        "om_grant_030",
+        "om_grant_031",
+        "om_grant_066"
+      ]
+    },
+    {
+      "kind": "submission_package",
+      "summary": "系统提交包必须包含申请书、预算表、预算说明、团队成员表、导师推荐意见、合作单位证明函、路演PPT，共 7 个电子文件；签字页纸质另交。",
+      "source_message_ids": [
+        "om_grant_049",
+        "om_grant_050",
+        "om_grant_064"
+      ]
+    },
+    {
+      "kind": "budget_total",
+      "summary": "预算最终口径为 28000 元，预算表采用 v0.2 新版模板，不应使用 29000 元旧草案。",
+      "source_message_ids": [
+        "om_grant_023",
+        "om_grant_055",
+        "om_grant_056"
+      ]
+    },
+    {
+      "kind": "budget_rule",
+      "summary": "预算总额不得超过 30000 元，系统金额必须和预算说明一致；单价超过 8000 元设备需说明必要性且不建议采购固定资产。",
+      "source_message_ids": [
+        "om_grant_011",
+        "om_grant_056"
+      ]
+    },
+    {
+      "kind": "document_version",
+      "summary": "最终有效申请书为 v0.4 含导师电子签名版本。",
+      "source_message_ids": [
+        "om_grant_051",
+        "om_grant_052",
+        "om_grant_063"
+      ]
+    },
+    {
+      "kind": "slides_requirement",
+      "summary": "路演 PPT 要求 3-5 页，最终使用 v0.3/final 命名版。",
+      "source_message_ids": [
+        "om_grant_001",
+        "om_grant_005",
+        "om_grant_053",
+        "om_grant_062"
+      ]
+    },
+    {
+      "kind": "project_name",
+      "summary": "项目名称最终统一为“社区服务智能助手”，合作证明函曾写错名称并已更正为 v2。",
+      "source_message_ids": [
+        "om_grant_039",
+        "om_grant_044",
+        "om_grant_045",
+        "om_grant_047"
+      ]
+    },
+    {
+      "kind": "assignment",
+      "summary": "周岚负责预算表和预算说明，余舟负责申请书研究内容，林澈负责 PPT，李飞负责合作证明函模板、材料清单和最终提交。",
+      "source_message_ids": [
+        "om_grant_003",
+        "om_grant_004",
+        "om_grant_005",
+        "om_grant_016",
+        "om_grant_057"
+      ]
+    },
+    {
+      "kind": "final_files",
+      "summary": "最终命名文件包括预算表、预算说明、申请书、团队成员表、导师推荐意见、合作单位证明函和路演PPT。",
+      "source_message_ids": [
+        "om_grant_062",
+        "om_grant_060",
+        "om_grant_061",
+        "om_grant_063",
+        "om_grant_064"
+      ]
+    }
+  ],
+  "conflicts": [
+    {
+      "kind": "deadline_changed",
+      "summary": "系统截止时间从 4 月 29 日 18:00 提前到 4 月 28 日 20:00，旧截止不能再使用。",
+      "source_message_ids": [
+        "om_grant_001",
+        "om_grant_030",
+        "om_grant_031"
+      ]
+    },
+    {
+      "kind": "budget_template_changed",
+      "summary": "预算表 v0.1 使用旧模板，不接受导入；有效版本是 v0.2 新版模板。",
+      "source_message_ids": [
+        "om_grant_018",
+        "om_grant_019",
+        "om_grant_020",
+        "om_grant_023"
+      ]
+    },
+    {
+      "kind": "budget_total_changed",
+      "summary": "预算草案 29000 元后来改为 28000 元，最终不得使用旧金额。",
+      "source_message_ids": [
+        "om_grant_009",
+        "om_grant_023",
+        "om_grant_055"
+      ]
+    },
+    {
+      "kind": "project_name_mismatch",
+      "summary": "合作证明函初版项目名称与“社区服务智能助手”不一致，科研办要求名称完全一致，已重盖 v2。",
+      "source_message_ids": [
+        "om_grant_039",
+        "om_grant_043",
+        "om_grant_044",
+        "om_grant_047"
+      ]
+    }
+  ],
+  "open_questions": [
+    {
+      "kind": "expensive_equipment",
+      "summary": "边缘计算盒子单价 9800 是否属于固定资产/是否采购，后续改为云算力租赁以降低风险。",
+      "source_message_ids": [
+        "om_grant_010",
+        "om_grant_011",
+        "om_grant_024"
+      ]
+    },
+    {
+      "kind": "cloud_service_contract",
+      "summary": "云算力租赁申请阶段不需要合同，但预算说明需写清用途和周期。",
+      "source_message_ids": [
+        "om_grant_058",
+        "om_grant_059"
+      ]
+    },
+    {
+      "kind": "paper_signature",
+      "summary": "纸质签字页可以 4 月 29 日 12:00 前补交，但电子材料里的导师电子签名截图不能缺。",
+      "source_message_ids": [
+        "om_grant_030",
+        "om_grant_051",
+        "om_grant_052"
+      ]
+    }
+  ]
+}
