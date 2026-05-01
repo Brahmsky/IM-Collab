@@ -123,6 +123,36 @@ def test_convert_annotated_document_to_evidence_maps_char_interval_to_message_id
     ]
 
 
+def test_convert_annotated_document_prefers_exact_source_text_match_over_fuzzy_interval() -> None:
+    text, spans = build_source_text(
+        [
+            {
+                "message_id": "om_1",
+                "sender": "同学",
+                "content": "我发模板。",
+                "attachments": [{"type": "file", "name": "模板.pptx"}],
+            },
+            {"message_id": "om_2", "sender": "老师", "content": "PPT 控制在 6-8 页即可。"},
+        ]
+    )
+    wrong_start = text.index("PPT 控制")
+    wrong_end = text.index("。", wrong_start) + 1
+    document = FakeDocument(
+        [
+            FakeExtraction(
+                extraction_class="attachment_reference",
+                extraction_text="[附件:file:模板.pptx]",
+                attributes={"claim": "同学分享了 PPT 模板附件"},
+                char_interval=FakeInterval(wrong_start, wrong_end),
+            )
+        ]
+    )
+
+    evidence = convert_annotated_document_to_evidence(document, spans, source_text=text)
+
+    assert evidence[0]["source_message_ids"] == ["om_1"]
+
+
 def test_extract_evidence_uses_openai_provider_with_deepseek_v4_flash() -> None:
     document = FakeDocument(
         [

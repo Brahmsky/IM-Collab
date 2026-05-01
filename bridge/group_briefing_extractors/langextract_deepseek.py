@@ -39,13 +39,14 @@ def build_source_text(messages: list[dict[str, Any]]) -> tuple[str, list[dict[st
         start = cursor
         lines.append(line)
         cursor += len(line) + 1
-        spans.append({"message_id": message_id, "start": start, "end": cursor - 1})
+        spans.append({"message_id": message_id, "start": start, "end": cursor - 1, "text": line})
     return "\n".join(lines), spans
 
 
 def convert_annotated_document_to_evidence(
     annotated_document: Any,
     message_spans: list[dict[str, Any]],
+    source_text: str | None = None,
     extractor_name: str = EXTRACTOR_NAME,
 ) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
@@ -56,18 +57,21 @@ def convert_annotated_document_to_evidence(
         kind = str(getattr(extraction, "extraction_class", ""))
         if kind not in SUPPORTED_KINDS:
             continue
-        message_ids = _message_ids_for_interval(interval, message_spans)
+        extraction_text = str(getattr(extraction, "extraction_text", ""))
+        message_ids = _message_ids_for_exact_text(extraction_text, message_spans)
+        if not message_ids:
+            interval = _prefer_exact_source_interval(extraction_text, interval, source_text)
+            message_ids = _message_ids_for_interval(interval, message_spans)
         if not message_ids:
             continue
         attributes = getattr(extraction, "attributes", None)
         if not isinstance(attributes, dict):
             attributes = {}
-        source_text = str(getattr(extraction, "extraction_text", ""))
         evidence.append(
             {
                 "kind": kind,
-                "claim": str(attributes.get("claim") or source_text),
-                "source_text": source_text,
+                "claim": str(attributes.get("claim") or extraction_text),
+                "source_text": extraction_text,
                 "source_message_ids": message_ids,
                 "confidence": str(attributes.get("confidence") or "medium"),
                 "extractor": extractor_name,
@@ -97,6 +101,7 @@ def extract_evidence(
             "temperature": 0.0,
         },
     )
+    extract_kwargs = _prompt_validation_kwargs(lx)
     annotated_document = lx.extract(
         text_or_documents=source_text,
         prompt_description=_prompt_description(),
@@ -107,8 +112,9 @@ def extract_evidence(
         extraction_passes=extraction_passes,
         show_progress=False,
         resolver_params={"suppress_parse_errors": True},
+        **extract_kwargs,
     )
-    return convert_annotated_document_to_evidence(annotated_document, message_spans)
+    return convert_annotated_document_to_evidence(annotated_document, message_spans, source_text=source_text)
 
 
 def _message_ids_for_interval(interval: Any, message_spans: list[dict[str, Any]]) -> list[str]:
@@ -122,6 +128,43 @@ def _message_ids_for_interval(interval: Any, message_spans: list[dict[str, Any]]
         if int(span["start"]) < int(end) and int(start) < int(span["end"])
     ]
     return list(dict.fromkeys(matches))
+
+
+def _message_ids_for_exact_text(extraction_text: str, message_spans: list[dict[str, Any]]) -> list[str]:
+    if not extraction_text:
+        return []
+    return [
+        str(span["message_id"])
+        for span in message_spans
+        if extraction_text in str(span.get("text") or "")
+    ]
+
+
+def _prefer_exact_source_interval(extraction_text: str, interval: Any, source_text: str | None) -> Any:
+    if not source_text or not extraction_text:
+        return interval
+    starts: list[int] = []
+    cursor = source_text.find(extraction_text)
+    while cursor >= 0:
+        starts.append(cursor)
+        cursor = source_text.find(extraction_text, cursor + 1)
+    if not starts:
+        return interval
+    original_start = getattr(interval, "start_pos", None)
+    original_end = getattr(interval, "end_pos", None)
+    original_mid = (
+        (int(original_start) + int(original_end)) / 2
+        if original_start is not None and original_end is not None
+        else starts[0]
+    )
+    best_start = min(starts, key=lambda start: abs((start + len(extraction_text) / 2) - original_mid))
+    return _CharInterval(best_start, best_start + len(extraction_text))
+
+
+class _CharInterval:
+    def __init__(self, start_pos: int, end_pos: int) -> None:
+        self.start_pos = start_pos
+        self.end_pos = end_pos
 
 
 def _attachment_text(attachments: Any) -> str:
@@ -147,10 +190,21 @@ def _load_langextract() -> Any:
         ) from exc
 
 
+def _prompt_validation_kwargs(lx: Any) -> dict[str, Any]:
+    prompt_validation = getattr(lx, "prompt_validation", None)
+    if prompt_validation is None:
+        return {}
+    level = getattr(getattr(prompt_validation, "PromptValidationLevel", None), "OFF", None)
+    if level is None:
+        return {}
+    return {"prompt_validation_level": level}
+
+
 def _prompt_description() -> str:
     return """Extract source-grounded group-chat evidence for an office assistant.
 
 Only extract information explicitly supported by the source text. Use exact source text spans.
+Do not upgrade a teammate's interpretation into a teacher/client requirement. Keep the speaker and authority level clear in the claim.
 Classes:
 - deadline
 - submission_method
@@ -185,12 +239,12 @@ def _examples(lx: Any) -> list[Any]:
                 ),
                 lx.data.Extraction(
                     extraction_class="submission_method",
-                    extraction_text="在课程平台提交",
+                    extraction_text="4 月 30 日 18:00 前在课程平台提交 PDF 文档",
                     attributes={"claim": "提交方式为课程平台", "confidence": "high"},
                 ),
                 lx.data.Extraction(
                     extraction_class="document_requirement",
-                    extraction_text="PDF 文档",
+                    extraction_text="4 月 30 日 18:00 前在课程平台提交 PDF 文档",
                     attributes={"claim": "文档需要以 PDF 形式提交", "confidence": "high"},
                 ),
                 lx.data.Extraction(
