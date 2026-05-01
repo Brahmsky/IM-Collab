@@ -41,12 +41,12 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
 
     html = render_console_html(tasks_root, tmp_path / "events")
 
-    assert "IM-Collab Agent Console" in html
+    assert "Agent-Pilot 办公助手" in html
     assert "task-1" in html
     assert "running" in html
     assert "thread_123" in html
     assert "turn_456" in html
-    assert "last control" in html
+    assert "最新操作" in html
     assert "card_action" in html
     assert 'name="action" value="append"' in html
     assert 'name="action" value="interrupt"' in html
@@ -58,13 +58,13 @@ def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> No
     tasks_root = tmp_path / "tasks"
 
     assert handle_console_action(tasks_root, {"action": "append", "task_id": "task-1", "text": "补充"}) == (
-        "append queued for task-1"
+        "已为任务 task-1 追加指令"
     )
     assert handle_console_action(tasks_root, {"action": "interrupt", "task_id": "task-1"}) == (
-        "interrupt queued for task-1"
+        "已向任务 task-1 发送打断指令"
     )
     assert handle_console_action(tasks_root, {"action": "ack", "task_id": "task-1", "note": "已确认"}) == (
-        "ack saved for task-1"
+        "已确认任务 task-1"
     )
 
     commands = [
@@ -95,5 +95,5 @@ def test_handle_console_action_retries_task(tmp_path: Path) -> None:
         retry=fake_retry,
     )
 
-    assert message == "retry started for task-1"
+    assert message == "已重新启动任务 task-1"
     assert seen == {"task_dir": task_dir, "generator": "local", "publish": True}
