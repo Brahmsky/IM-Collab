@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -8,8 +9,10 @@ from typing import Any
 from bridge.codex_app_server_task_runner import AppServerTaskBackend, run_codex_app_server_task
 from bridge.codex_task_runner import run_codex_task
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
-from bridge.group_briefing import brief_needs_confirmation, build_confirmation_card, build_group_brief
+from bridge.group_briefing import brief_needs_confirmation, build_confirmation_card, build_group_brief, build_group_brief_from_evidence
 from bridge.group_briefing import render_confirmation_markdown, render_group_brief_markdown
+from bridge.group_briefing_extractors.langextract_deepseek import DEFAULT_BASE_URL, DEFAULT_MODEL_ID, extract_evidence
+from bridge.group_context_selector import select_briefing_context
 from bridge.lark_im import build_delivery_markdown
 from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_binding import bind_active_task, clear_active_task
@@ -29,6 +32,9 @@ def run_golembot_office_task(
     runner: Any | None = None,
     conversation_context: list[dict[str, Any]] | None = None,
     codex_backend: AppServerTaskBackend | None = None,
+    brief_extractor: str = "rules",
+    brief_api_key: str | None = None,
+    evidence_extractor: Any | None = None,
 ) -> dict[str, Any]:
     task_id = task_id or _task_id_from_session(session_key)
     task_dir = tasks_root / task_id
@@ -40,7 +46,14 @@ def run_golembot_office_task(
             task_id,
             _request_markdown(message, session_key, chat_id, sender_id, conversation_context=conversation_context),
         )
-        brief = _write_group_brief(task_dir, chat_id, conversation_context or [])
+        brief = _write_group_brief(
+            task_dir,
+            chat_id,
+            conversation_context or [],
+            brief_extractor=brief_extractor,
+            brief_api_key=brief_api_key,
+            evidence_extractor=evidence_extractor,
+        )
     else:
         brief = None
         _append_confirmation_controls_to_request(task_dir)
@@ -175,10 +188,42 @@ Use Codex + superpowers as the only orchestration layer. Prefer existing Feishu 
 """
 
 
-def _write_group_brief(task_dir: Path, chat_id: str, conversation_context: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _write_group_brief(
+    task_dir: Path,
+    chat_id: str,
+    conversation_context: list[dict[str, Any]],
+    brief_extractor: str = "rules",
+    brief_api_key: str | None = None,
+    evidence_extractor: Any | None = None,
+) -> dict[str, Any] | None:
     if not conversation_context:
         return None
-    brief = build_group_brief(chat_id=chat_id, messages=conversation_context)
+    if brief_extractor == "rules":
+        brief = build_group_brief(chat_id=chat_id, messages=conversation_context)
+    elif brief_extractor == "langextract-deepseek":
+        selected_context = select_briefing_context(conversation_context, max_messages=60, recent_tail=16)
+        extractor = evidence_extractor or extract_evidence
+        evidence = extractor(
+            selected_context,
+            api_key=brief_api_key or os.environ.get("DEEPSEEK_API_KEY"),
+            base_url=os.environ.get("DEEPSEEK_BASE_URL", DEFAULT_BASE_URL),
+            model_id=os.environ.get("DEEPSEEK_MODEL", DEFAULT_MODEL_ID),
+        )
+        (task_dir / "evidence.json").write_text(
+            _json_dumps(
+                {
+                    "extractor": brief_extractor,
+                    "source_message_count": len(selected_context),
+                    "original_source_message_count": len(conversation_context),
+                    "context_selected": True,
+                    "evidence": evidence,
+                }
+            ),
+            encoding="utf-8",
+        )
+        brief = build_group_brief_from_evidence(chat_id=chat_id, messages=selected_context, evidence_items=evidence)
+    else:
+        raise ValueError(f"unsupported brief_extractor: {brief_extractor}")
     (task_dir / "brief.json").write_text(_json_dumps(brief), encoding="utf-8")
     (task_dir / "brief.md").write_text(render_group_brief_markdown(brief), encoding="utf-8")
     return brief

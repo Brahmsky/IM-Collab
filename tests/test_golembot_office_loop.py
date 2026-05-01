@@ -87,6 +87,51 @@ def test_run_golembot_office_task_writes_source_grounded_group_brief(tmp_path: P
     assert "brief.md" in request
 
 
+def test_run_golembot_office_task_can_use_selected_langextract_brief_backend(tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_evidence_extractor(messages, **kwargs):
+        seen["message_ids"] = [message["message_id"] for message in messages]
+        seen["kwargs"] = kwargs
+        return [
+            {
+                "kind": "deadline",
+                "claim": "正式截止为 4 月 28 日 20:00",
+                "source_message_ids": ["om_formal"],
+                "confidence": "high",
+                "extractor": "fake-langextract",
+            }
+        ]
+
+    run_golembot_office_task(
+        message="根据刚才讨论生成材料 brief",
+        session_key="feishu:oc_group",
+        chat_id="oc_group",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="langextract-brief-task",
+        generator="local",
+        publish=False,
+        conversation_context=[
+            {"message_id": "om_noise", "sender_id": "ou_a", "content": "闲聊"},
+            {"message_id": "om_formal", "sender_id": "teacher", "content": "正式通知：4 月 28 日 20:00 截止。", "tags": ["formal_notice", "deadline"]},
+        ],
+        brief_extractor="langextract-deepseek",
+        brief_api_key="sk-test",
+        evidence_extractor=fake_evidence_extractor,
+    )
+
+    task_dir = tmp_path / "langextract-brief-task"
+    brief = json.loads((task_dir / "brief.json").read_text(encoding="utf-8"))
+    evidence = json.loads((task_dir / "evidence.json").read_text(encoding="utf-8"))
+
+    assert seen["message_ids"] == ["om_noise", "om_formal"]
+    assert seen["kwargs"]["api_key"] == "sk-test"
+    assert brief["annotations"][0]["annotation_id"] == "lx_001"
+    assert brief["annotations"][0]["claim"] == "正式截止为 4 月 28 日 20:00"
+    assert evidence["evidence"][0]["extractor"] == "fake-langextract"
+
+
 def test_run_golembot_office_task_waits_for_user_when_group_brief_has_conflicts(tmp_path: Path) -> None:
     result = run_golembot_office_task(
         message="根据刚才讨论生成方案和 PPT",

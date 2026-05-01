@@ -389,7 +389,27 @@ rtk .venv/bin/python scripts/extract_group_briefing_evidence.py \
   --output /tmp/group-briefing-evidence.json
 ```
 
-模型默认是 `deepseek-v4-flash`，通过 LangExtract 的 OpenAI provider 访问 `https://api.deepseek.com`。抽取结果进入我们自己的 evidence 格式；后续由 `build_group_brief_from_evidence()` 转成 `brief.json`。
+长上下文建议显式启用 selector：
+
+```bash
+rtk .venv/bin/python scripts/extract_group_briefing_evidence.py \
+  --context-fixture examples/scenarios/group_briefing/grant_application_ultra_long_context/context.json \
+  --output /tmp/group-briefing-evidence.json \
+  --select-context
+```
+
+模型默认是 `deepseek-v4-flash`，通过 LangExtract 的 OpenAI provider 访问 `https://api.deepseek.com`。抽取结果进入我们自己的 evidence 格式；后续由 `build_group_brief_from_evidence()` 转成 `brief.json`。办公主循环也可显式启用：
+
+```bash
+rtk .venv/bin/python scripts/run_golembot_office_task.py \
+  --message "根据群聊生成经费申请材料 brief" \
+  --session-key "feishu:oc_demo" \
+  --chat-id "oc_demo" \
+  --sender-id "ou_demo" \
+  --task-id "gb-langextract-demo" \
+  --generator local \
+  --brief-extractor langextract-deepseek
+```
 
 如果 `brief.json` 中有 `conflict` 或 `open_question`，任务会进入 `waiting_for_user`，并写出 `confirmation.md`。同一群聊里的后续确认消息会写入 `control.jsonl`，后续继续执行或重试时 Codex 会读取这些确认信息。
 

@@ -56,8 +56,10 @@ rtk .venv/bin/python scripts/extract_group_briefing_evidence.py \
 | --- | ---: | ---: | ---: |
 | `extraction_passes=1` | 40 | 8 / 16 | 0.50 |
 | `extraction_passes=2` | 46 | 9 / 16 | 0.56 |
+| `--select-context --max-context-messages 45 --recent-tail 12` | 21 | 7 / 16 | 0.44 |
+| `--select-context --max-context-messages 60 --recent-tail 16` | 50 | 13 / 16 | 0.81 |
 
-Two passes improved recall slightly but increased latency substantially. This suggests pass count should not be increased blindly.
+Two passes improved recall slightly but increased latency substantially. A 45-message selector reduced cost but lost too much evidence. A more conservative 60-message selector produced the best score by preserving formal notices, corrections, final-file messages, attachments, and recent tail context.
 
 ## Interpretation
 
@@ -82,4 +84,4 @@ This is a good evaluation demo:
 - It can score evidence against a source-grounded oracle.
 - It can show measured limitations instead of hand-waving about quality.
 
-It is not yet enough to make LangExtract the default briefing path. The next useful step is to add a context selector that prioritizes final versions, formal notices, corrections, attachments, and unresolved questions before extraction.
+The selector result is strong enough to keep developing this path as a candidate briefing backend. It remains optional, but the task loop now supports `brief_extractor="langextract-deepseek"` and writes both `evidence.json` and `brief.json` when explicitly enabled.

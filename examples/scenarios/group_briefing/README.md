@@ -40,5 +40,7 @@ Observed DeepSeek V4 Flash results on 2026-05-01:
 
 - `extraction_passes=1`: 40 evidence items, matched 8/16 oracle items, recall 0.50.
 - `extraction_passes=2`: 46 evidence items, matched 9/16 oracle items, recall 0.56.
+- `--select-context --max-context-messages 45 --recent-tail 12`: 21 evidence items, matched 7/16, recall 0.44.
+- `--select-context --max-context-messages 60 --recent-tail 16`: 50 evidence items, matched 13/16, recall 0.81.
 
-The result is good enough to prove the extractor loop works, but not good enough to replace the default briefing path without a context selector and stronger multi-message aggregation.
+The 60-message selector result is the current best setting. It keeps the prompt smaller than full history while preserving formal notices, corrections, final files, attachments, and recent messages.

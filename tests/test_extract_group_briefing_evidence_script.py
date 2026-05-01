@@ -29,3 +29,34 @@ def test_extract_group_briefing_evidence_script_can_render_source_without_api(tm
     payload = json.loads(output_path.read_text(encoding="utf-8"))
     assert "[om_course_001]" in payload["text"]
     assert payload["spans"][0]["message_id"] == "om_course_001"
+
+
+def test_extract_group_briefing_evidence_script_can_render_selected_context(tmp_path: Path) -> None:
+    output_path = tmp_path / "selected-source.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/extract_group_briefing_evidence.py",
+            "--context-fixture",
+            "examples/scenarios/group_briefing/grant_application_ultra_long_context/context.json",
+            "--output",
+            str(output_path),
+            "--render-source",
+            "--select-context",
+            "--max-context-messages",
+            "45",
+            "--recent-tail",
+            "12",
+        ],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        capture_output=True,
+    )
+
+    assert "source_messages=45" in result.stdout
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert "[om_grant_030]" in payload["text"]
+    assert "[om_grant_064]" in payload["text"]
+    assert "[om_grant_071]" in payload["text"]
