@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
 from bridge.lark_docs import _extract_json
+from bridge.subprocess_utils import run as _sp_run
 
 Runner = Callable[[list[str], str | None], str]
 
@@ -103,7 +103,7 @@ def update_whiteboard_from_mermaid(
 def _run(args: list[str], input_text: str | None, runner: Runner | None) -> str:
     if runner:
         return runner(args, input_text)
-    completed = subprocess.run(args, input=input_text, check=True, text=True, capture_output=True)
+    completed = _sp_run(args, input=input_text, check=True, text=True, capture_output=True)
     return completed.stdout
 
 

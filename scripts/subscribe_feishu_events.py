@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -10,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from bridge.lark_event import build_subscribe_args
+from bridge.subprocess_utils import run as _sp_run
 
 
 def main() -> int:
@@ -24,7 +24,7 @@ def main() -> int:
         return 0
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    return subprocess.run(command, check=False).returncode
+    return _sp_run(command, check=False).returncode
 
 
 if __name__ == "__main__":

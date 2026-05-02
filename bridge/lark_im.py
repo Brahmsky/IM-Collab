@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
 from bridge.lark_docs import _extract_json
+from bridge.subprocess_utils import run as _sp_run
 
 Runner = Callable[[list[str]], str]
 
@@ -180,7 +180,7 @@ def _remote_value(artifacts: dict[str, Any], key: str, field: str) -> str:
 
 
 def _subprocess_runner(args: list[str]) -> str:
-    completed = subprocess.run(args, text=True, capture_output=True)
+    completed = _sp_run(args, text=True, capture_output=True)
     if completed.returncode != 0:
         raise RuntimeError(
             "lark-cli IM command failed\n"

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol, Sequence
 
 from bridge.codex_task_runner import build_codex_task_prompt
+from bridge.subprocess_utils import Popen as _sp_Popen
 
 
 class LineTransport(Protocol):
@@ -23,7 +24,7 @@ class StdioAppServerTransport:
         command: Sequence[str] = ("codex", "app-server"),
         cwd: Path | None = None,
     ) -> None:
-        self.process = subprocess.Popen(
+        self.process = _sp_Popen(
             list(command),
             cwd=cwd.as_posix() if cwd else None,
             stdin=subprocess.PIPE,

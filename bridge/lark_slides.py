@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from html import escape
 from pathlib import Path
 from typing import Any, Callable
 
 from bridge.lark_docs import _extract_json
+from bridge.subprocess_utils import run as _sp_run
 
 Runner = Callable[[list[str]], str]
 
@@ -77,5 +77,5 @@ def _slide_xml(title: str, body_lines: list[str]) -> str:
 
 
 def _subprocess_runner(args: list[str]) -> str:
-    completed = subprocess.run(args, check=True, text=True, capture_output=True)
+    completed = _sp_run(args, check=True, text=True, capture_output=True)
     return completed.stdout
