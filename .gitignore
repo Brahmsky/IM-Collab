@@ -9,5 +9,6 @@ events/
 .codex/
 .agents
 .agents/
+.claude/
 .env
 .env.*

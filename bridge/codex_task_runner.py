@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 from typing import Any, Callable
+
+from bridge.subprocess_utils import run as _sp_run
 
 from bridge.task_protocol import read_artifacts, read_status, write_status
 
@@ -152,7 +153,7 @@ def _validate_codex_outputs(task_dir: Path) -> None:
 
 
 def _subprocess_runner(args: list[str]) -> str:
-    completed = subprocess.run(args, text=True, capture_output=True)
+    completed = _sp_run(args, text=True, capture_output=True)
     if completed.returncode != 0:
         raise RuntimeError(
             f"codex exec failed with code {completed.returncode}\n"

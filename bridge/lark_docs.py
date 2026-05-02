@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from bridge.subprocess_utils import run as _sp_run
+
 Runner = Callable[[list[str]], str]
 
 
@@ -40,7 +42,7 @@ def create_doc_from_markdown(
 
 
 def _subprocess_runner(args: list[str], cwd: Path | None = None) -> str:
-    completed = subprocess.run(args, text=True, capture_output=True, cwd=cwd)
+    completed = _sp_run(args, text=True, capture_output=True, cwd=cwd)
     if completed.returncode != 0:
         raise RuntimeError(
             "lark-cli command failed\n"

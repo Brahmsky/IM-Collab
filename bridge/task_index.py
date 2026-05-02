@@ -90,9 +90,12 @@ def _remote_value(artifacts: dict[str, Any], key: str, field: str) -> str:
     if not isinstance(value, dict):
         return ""
     remote = value.get("remote", {})
-    if not isinstance(remote, dict):
-        return ""
-    return str(remote.get(field) or "")
+    if isinstance(remote, dict):
+        remote_val = remote.get(field)
+        if remote_val:
+            return str(remote_val)
+    local_path = value.get("path", "")
+    return str(local_path) if local_path else ""
 
 
 def _read_json(path: Path) -> dict[str, Any]:
