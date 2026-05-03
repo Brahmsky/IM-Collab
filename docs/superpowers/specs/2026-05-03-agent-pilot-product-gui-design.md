@@ -270,6 +270,33 @@ SelectedSessionView
 
 This view model can be served by Python first and later moved to a TypeScript/React sidecar if the frontend becomes a larger application.
 
+## Frontend Stack Constraint
+
+The product GUI should use a lightweight Flask + HTML/CSS/JavaScript approach.
+
+Preferred shape:
+
+```text
+Flask server
+  -> serves product GUI static files
+  -> exposes JSON endpoints for WorkspaceView and SelectedSessionView
+  -> exposes controlled POST endpoints for append/interrupt/retry/ack/new-session
+
+HTML/CSS/JavaScript frontend
+  -> owns layout, styling, search, session selection, composer behavior
+  -> talks to Flask through JSON
+  -> does not render large HTML strings in Python
+```
+
+Avoid these as the product GUI implementation:
+
+- Jinja-rendered large templates as the main frontend architecture.
+- Streamlit.
+- Chainlit.
+- Continuing to grow `bridge/task_console_web.py` as a Python string-rendered UI.
+
+The reason is practical: the target is a high-fidelity, screenshot-matched desktop-style product UI. It needs direct control over layout, spacing, interaction states, and screenshot verification. Frameworks optimized for quick internal dashboards or chat demos would make that harder and would also blur the boundary between GUI and Agent execution.
+
 ## Codex Output Return Path
 
 The difficult part is not static layout. The difficult part is making Codex progress feel live.
@@ -358,7 +385,7 @@ These should not block the first visual build, but they must stay visible:
 The recommended implementation path is:
 
 1. Keep the existing engineering console intact for debugging.
-2. Add a separate product GUI surface or route, rather than mutating the old console into the final UI.
+2. Add a separate Flask-served product GUI surface, rather than mutating the old console into the final UI.
 3. Build a typed view adapter over task bindings, task status, control logs, and artifact items.
 4. Render the screenshot-like layout with realistic fixture data first.
 5. Wire session selection, search, artifact display, and composer control-command writing.
