@@ -542,13 +542,13 @@ def handle_console_action(
 
 def _task_card(task: Any) -> str:
     facts = [
-        ("updated", task.updated_at),
-        ("session", task.session_key),
-        ("thread", task.codex_thread_id),
-        ("turn", task.active_turn_id),
-        ("control", f"{task.control_count} queued" if task.control_count else ""),
-        ("last control", task.last_control_type),
-        ("ack", task.ack_operator),
+        ("更新时间", task.updated_at),
+        ("会话", task.session_key),
+        ("Codex 线程", task.codex_thread_id),
+        ("活跃回合", task.active_turn_id),
+        ("控制指令", f"{task.control_count} queued" if task.control_count else ""),
+        ("最新操作", task.last_control_type),
+        ("确认人", task.ack_operator),
     ]
     facts.extend(task.artifact_outputs)
     fact_html = "\n".join(
