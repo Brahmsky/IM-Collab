@@ -342,15 +342,6 @@ rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --port 8765
 
 打开终端输出的 URL 后，可以查看任务、thread/turn、控制队列，并执行 append、interrupt、retry、ack。
 
-启动产品 GUI 原型：
-
-```bash
-rtk .venv/bin/python -m pip install -r requirements-gui.txt
-rtk .venv/bin/python scripts/run_product_gui.py --host 127.0.0.1 --port 8766
-```
-
-产品 GUI 是独立于旧 Web 控制台的 Flask + HTML/CSS/JavaScript 前端。它按 Agent-Pilot 目标稿展示左侧群聊/session、中央 Agent 执行流、右侧任务详情和产物列表；输入框会把消息写入同一个 `control.jsonl` 追加指令通道。它不使用 Jinja、Streamlit 或 Chainlit，也不把旧 `task_console_web.py` 继续扩成最终 UI。
-
 只看失败：
 
 ```bash
