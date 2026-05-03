@@ -1,125 +1,123 @@
-# Agent-Pilot Product GUI Design
+# Agent-Pilot 产品 GUI 设计
 
-## Status
+## 状态
 
-This document records the target product GUI direction discussed on 2026-05-03. It replaces the temporary web console as the reference for future frontend work.
+本文档记录了 2026-05-03 讨论的预期产品 GUI 方向。它将取代临时 Web 控制台，作为未来前端工作的参考。
 
-The current Python web console remains an engineering surface. The target GUI should be treated as a polished Agent-Pilot product cockpit that is visually close to the provided reference screenshot: a light desktop app with a left task/session sidebar, a central agent conversation workspace, and a right task detail/artifact panel.
+当前的 Python Web 控制台仍然是一个工程界面。目标 GUI 应被视为一个精致的 Agent-Pilot 产品驾驶舱，在视觉上接近所提供的参考截图：一个浅色桌面应用，左侧是任务/会话侧边栏，中央是智能体对话工作区，右侧是任务详情/工件面板。
 
-## Product Goal
+## 产品目标
 
-Build a high-fidelity Agent-Pilot desktop-style cockpit for observing and steering IM-Collab tasks.
+构建一个高保真的 Agent-Pilot 桌面风格驾驶舱，用于观察和引导 IM-Collab 任务。
 
-The GUI is not the main user entry point. Feishu group chat remains the natural user surface. The GUI exists for operators and power users who need to see active sessions, inspect task progress, add steering instructions, interrupt work, and open generated artifacts.
-
-The GUI must share the same Codex execution backend as Feishu:
+GUI 面向需要查看活跃会话、检查任务进度、添加引导指令、中断工作和打开生成工件的操作员和高级用户，与飞书共享相同的 Codex 执行后端：
 
 ```text
-Feishu group message
-GUI input message
-  -> same Bridge control/input channel
-  -> same Codex app-server thread or active turn
-  -> same task protocol
-  -> same artifact delivery model
+飞书群消息
+GUI 输入消息
+  -> 相同的 Bridge 控制/输入通道
+  -> 相同的 Codex app-server 线程或活跃回合
+  -> 相同的任务协议
+  -> 相同的工件交付模型
 ```
 
-This means the GUI must not become a separate workflow engine or planner. It is another input and observation surface over the existing Agent-Pilot loop.
+这意味着 GUI 不能成为一个独立的工作流引擎或规划器。它只是现有 Agent-Pilot 循环之上的另一个输入和观察界面。
 
-## Visual Reference
+## 视觉参考
 
-The reference screen has four stable regions:
+参考屏幕有四个稳定的区域：
 
-1. Left rail: Agent-Pilot brand, utility actions, grouped chat/session navigation, settings.
-2. Top workspace title: selected session title and lightweight window/action controls.
-3. Center workspace: user request bubble, agent response, execution checklist, artifact cards, and bottom input composer.
-4. Right inspector: task metadata, state, source group, target outputs, task id, and artifact list.
+1. **左侧栏**：Agent-Pilot logo、实用操作、分组的聊天/会话导航、设置。
+2. **顶部工作区标题**：选中的会话标题以及轻量级的窗口/操作控件。
+3. **中央工作区**：用户请求气泡、智能体回复、执行检查清单、工件卡片以及底部输入组合框。
+4. **右侧检查器**：任务元数据、状态、来源群组、目标输出、任务 ID 和工件列表。
 
-The first implementation should prioritize matching this composition over adding extra features. If a feature does not fit this frame cleanly, leave it out or mark it as future work.
+如果某个功能不能清晰地融入此框架，则将其省略或标记为未来工作。
 
-## Layout Contract
+## 布局契约
 
-### Left Sidebar
+### 左侧栏
 
-The left sidebar shows where the bot is deployed and which sessions exist under each group.
+左侧栏显示机器人在哪些群组中已部署，以及每个群组下有哪些会话。
 
-Required content:
+必需内容：
 
-- Brand row: Agent-Pilot logo and name.
-- Utility actions:
-  - New task: still unresolved; keep as a visible but low-risk action until product semantics are decided.
-  - Search: character-level search across sessions.
-  - Plugins: unresolved; likely hidden or disabled in the first product build unless there is a concrete plugin catalog.
-  - Automation: unresolved; likely hidden or disabled in the first product build unless there is a concrete automation model.
-- Task groups:
-  - Each Feishu group where the bot is installed appears as a collapsible group.
-  - Each group contains multiple sessions.
-  - The active session is highlighted with a soft background and a blue indicator dot.
-- Settings at the bottom.
+- **品牌行**：Agent-Pilot 标志。
+- **实用操作**：
+  - **新任务**：具体功能仍未解决；保持可见但低风险的操作，直到产品语义确定。
+  - **搜索**：跨会话的字符级搜索。
+  - **插件**：未解决；在第一个产品构建中可能隐藏或禁用，除非有具体的插件目录。
+  - **自动化**：未解决；在第一个产品构建中可能隐藏或禁用，除非有具体的自动化模型。
+- **任务分组**：
+  - 每个已安装机器人的飞书群组显示为一个可折叠的组。
+  - 每个组包含多个会话。
+  - 活跃会话以柔和背景和蓝色指示点高亮显示。
+- **设置**位于底部。
 
-The reference example contains three groups:
+参考示例包含三个群组：
 
 - 项目答辩群
 - 客户反馈群
 - 运营复盘群
 
-These names are examples. Real data should come from Feishu chat metadata and task/session bindings.
+这些名称仅为示例。真实数据应来自飞书聊天元数据和任务/会话绑定。
 
-### Session Model
+### 会话模型
 
-A single Feishu group can contain many sessions.
+单个飞书群组可以包含多个会话。
 
-The intended user-facing model is:
-
-```text
-Feishu group
-  -> sessions created by explicit user action
-  -> tasks and Codex turns inside a session
-  -> artifacts produced or modified by those turns
-```
-
-The primary way to create a new session in a group is:
+预期的面向用户模型如下：
 
 ```text
-@bot /new <user request>
+飞书群组
+  -> 通过明确的用户操作创建的会话
+  -> 会话内的任务和 Codex 回合
+  -> 这些回合产生或修改的工件
 ```
 
-or a Chinese equivalent such as:
+在群组中创建新会话的主要方式是通过：
 
 ```text
-@bot 新开任务：<user request>
+@bot /new <用户请求>
 ```
 
-After `/new`, later bot-related group messages are attached to that new session until the session is closed, another session is explicitly selected, or a new session is started.
+或对应的中文命令，例如：
 
-The GUI should expose sessions by human-readable titles, not raw `task_id`, `codex_thread_id`, or `turn_id`. Technical ids belong in the right inspector or debug expansion, not in the primary sidebar label.
+```text
+@bot 新开任务：<用户请求>
+```
 
-### Search
+使用 `/new` 后，后续与该机器人相关的群消息将附加到该新会话，直到会话关闭、明确选择另一个会话或启动新会话。
 
-Search is character-level session search.
+GUI 应使用人类可读的标题来展示会话，而不是原始的 `task_id`、`codex_thread_id` 或 `turn_id`。技术性 ID 应放在右侧检查器或调试展开区域中，而不是主侧边栏标签中。
 
-Search should match:
+### 搜索
 
-- session title
-- source group name
-- latest summary
-- artifact labels
-- optionally task id for operators
+搜索是跨会话的字符级搜索。
 
-Search is not an agentic semantic query in the first product GUI. It should be fast, predictable, and local.
+搜索应匹配：
 
-### Center Workspace
+- 会话标题
+- 来源群组名称
+- 最新摘要
+- 工件标签
+- 可选：操作员的任务 ID
 
-The center workspace is a conversation-like task cockpit.
+在第一个产品 GUI 中，搜索不是基于智能体的语义查询。它应该快速、可预测且本地执行。
 
-It should render:
+### 中央工作区
 
-- the initiating user request as a rounded bubble near the top
-- the latest agent message
-- an execution checklist
-- generated or pending artifact cards
-- a bottom input composer
+中央工作区是一个类似对话的任务操作台。
 
-The reference checklist shape:
+它应呈现：
+
+- 发起用户请求，显示在顶部附近的圆角气泡中
+- 最新的智能体消息
+- 执行检查清单
+- 已生成或待处理的工件卡片
+- 底部输入组合框
+
+参考检查清单形状如下（这个地方还是太overdesign了，可以考虑更简洁的形态，不用非得做出任务列表）：
 
 ```text
 收到，正在为你梳理并生成相关材料，执行计划如下：
@@ -132,52 +130,52 @@ The reference checklist shape:
 已生成 3 个产物
 ```
 
-The checklist should be driven by task/run state when available, but early versions may use coarse task protocol milestones:
+检查清单应由任务/运行状态驱动（可用时），但早期版本可能使用粗粒度的任务协议里程碑：
 
-- read context
-- build source-grounded brief
-- run Codex task
-- generate artifacts
-- deliver results
+- 读取上下文
+- 构建基于来源的简报
+- 运行 Codex 任务
+- 生成工件
+- 交付结果
 
-Avoid hardcoding office deliverable types into the data layer. The UI may display example labels such as 简报草稿 or PPT 大纲, but the source of truth is `artifacts.json -> items[]` exposed through `TaskIndex.artifact_outputs`.
+避免将办公交付物类型硬编码到数据层中。UI 可以显示诸如“简报草稿”或“PPT 大纲”之类的示例标签，但真实信息来源是 `artifacts.json -> items[]`，通过 `TaskIndex.artifact_outputs` 暴露。
 
-### Artifact Cards
+### 工件卡片
 
-Artifact cards in the center workspace and right inspector should represent arbitrary artifact items.
+中央工作区和右侧检查器中的工件卡片应表示任意工件项。
 
-Each card should show:
+每张卡片应显示：
 
-- icon derived from artifact kind or MIME-like type
-- human label
-- local or remote format hint, such as `docx · 1,240 字`
-- status: completed, generating, pending, failed
-- if remote is available, a link or open action
+- 根据工件类型或类似 MIME 的类型派生的图标
+- 人类可读的标签
+- 本地或远程格式提示，例如 `docx · 1,240 字`
+- 状态：已完成、生成中、待处理、失败
+- 如果远程可用，则提供链接或打开操作
 
-The UI can visually specialize common office kinds:
+UI 可以针对常见办公类型进行视觉专业化：
 
-- document / docx / markdown
-- slides / ppt / deck
-- text reply draft
-- whiteboard / diagram
-- file / attachment
+- 文档 / docx / markdown
+- 幻灯片 / ppt / 演示文稿
+- 文本回复草稿
+- 白板 / 图表
+- 文件 / 附件
 
-But these specializations must be presentation adapters only. They must not reintroduce a fixed `document_url/slides_url/whiteboard_token` task model.
+但这些专业化必须仅仅是呈现适配器。它们不得重新引入固定的 `document_url/slides_url/whiteboard_token` 任务模型。
 
-### Bottom Composer
+### 底部组合框
 
-The bottom composer sends messages into the same execution path as Feishu follow-up messages.
+底部组合框将消息发送到与飞书后续消息相同的执行路径。
 
-Conceptually:
+概念上：
 
 ```text
-GUI composer message
+GUI 组合框消息
   -> append_control_command(..., "append_instruction", payload)
-  -> if active Codex turn exists: steer/append to active turn
-  -> else attach to waiting or selected session
+  -> 如果存在活跃的 Codex 回合：引导/附加到活跃回合
+  -> 否则附加到等待中或选中的会话
 ```
 
-For Codex, the message should preserve its source:
+对于 Codex，消息应保留其来源：
 
 ```json
 {
@@ -187,7 +185,7 @@ For Codex, the message should preserve its source:
 }
 ```
 
-Feishu messages should likewise preserve their source:
+飞书消息也应保留其来源：
 
 ```json
 {
@@ -199,49 +197,49 @@ Feishu messages should likewise preserve their source:
 }
 ```
 
-The Bridge should pass the original natural language through to Codex rather than classifying it through brittle keyword routing.
+Bridge 应将原始自然语言直接传递给 Codex，而不是通过脆弱的规则路由进行分类。
 
-### Right Inspector
+### 右侧检查器
 
-The right panel shows task details for the selected session.
+右侧面板显示所选会话的任务详情。
 
-Required fields:
+必填字段：
 
-- status
-- source group
-- target or user-visible goal
-- created time
-- task id
-- artifact count
-- artifact list
+- 状态
+- 来源群组
+- 目标或用户可见的目标
+- 创建时间
+- 任务 ID
+- 工件数量
+- 工件列表
 
-Optional advanced fields:
+可选的高级字段：
 
-- Codex thread id
-- active turn id
-- context pack id
-- latest source-grounded brief
-- unresolved conflicts/open questions
-- control log entries
+- Codex 线程 ID
+- 活跃回合 ID
+- 上下文包 ID
+- 最新的基于来源的简报
+- 未解决的冲突/待定问题
+- 控制日志条目
 
-Advanced fields should be hidden behind an operator/debug disclosure, not shown by default in the polished product view.
+高级字段应隐藏在操作员/调试展开区域后面，默认情况下不在精致的产品视图中显示。
 
-## Data Model Mapping
+## 数据模型映射
 
-The product GUI should use an adapter layer instead of reading raw files directly in components.
+产品 GUI 应使用适配器层，而不是直接在组件中读取原始文件。
 
-Input sources:
+输入来源：
 
 - `tasks/task-bindings.json`
 - `tasks/<task_id>/status.json`
 - `tasks/<task_id>/artifacts.json`
 - `tasks/<task_id>/request.md`
 - `tasks/<task_id>/control.jsonl`
-- future context pack files
-- future source-grounded briefing files
-- Feishu chat metadata where available
+- 未来的上下文包文件
+- 未来的基于来源的简报文件
+- 飞书聊天元数据（可用时）
 
-Suggested frontend view model:
+建议的前端视图模型：
 
 ```text
 WorkspaceView
@@ -268,128 +266,127 @@ SelectedSessionView
   composer_state
 ```
 
-This view model can be served by Python first and later moved to a TypeScript/React sidecar if the frontend becomes a larger application.
+此视图模型可以先由 Python 提供，如果前端发展成为一个更大的应用程序，后续可以迁移到 TypeScript/React 侧车。
 
-## Frontend Stack Constraint
+## 前端技术栈约束
 
-The product GUI should use a lightweight Flask + HTML/CSS/JavaScript approach.
+产品 GUI 应使用轻量级的 Flask + HTML/CSS/JavaScript 方法。
 
-Preferred shape:
+推荐结构：
 
 ```text
-Flask server
-  -> serves product GUI static files
-  -> exposes JSON endpoints for WorkspaceView and SelectedSessionView
-  -> exposes controlled POST endpoints for append/interrupt/retry/ack/new-session
+Flask 服务器
+  -> 提供产品 GUI 静态文件
+  -> 为 WorkspaceView 和 SelectedSessionView 暴露 JSON 端点
+  -> 为 append/interrupt/retry/ack/new-session 暴露受控的 POST 端点
 
-HTML/CSS/JavaScript frontend
-  -> owns layout, styling, search, session selection, composer behavior
-  -> talks to Flask through JSON
-  -> does not render large HTML strings in Python
+HTML/CSS/JavaScript 前端
+  -> 负责布局、样式、搜索、会话选择、组合框行为
+  -> 通过 JSON 与 Flask 通信
+  -> 不在 Python 中渲染大型 HTML 字符串
 ```
 
-Avoid these as the product GUI implementation:
+以下内容应避免作为产品 GUI 的实现方式：
 
-- Jinja-rendered large templates as the main frontend architecture.
-- Streamlit.
-- Chainlit.
-- Continuing to grow `bridge/task_console_web.py` as a Python string-rendered UI.
+- 将 Jinja 渲染的大型模板作为主要前端架构。
+- Streamlit。
+- Chainlit。
+- 继续扩展 `bridge/task_console_web.py` 作为 Python 字符串渲染的 UI。
 
-The reason is practical: the target is a high-fidelity, screenshot-matched desktop-style product UI. It needs direct control over layout, spacing, interaction states, and screenshot verification. Frameworks optimized for quick internal dashboards or chat demos would make that harder and would also blur the boundary between GUI and Agent execution.
+原因是实际的：目标是一个高保真、截图匹配的桌面风格产品 UI。它需要直接控制布局、间距、交互状态和截图验证。为快速内部仪表盘或聊天演示而优化的框架会使这更加困难，并且会模糊 GUI 和 Agent 执行之间的界限。
 
-## Codex Output Return Path
+## Codex 输出返回路径
 
-The difficult part is not static layout. The difficult part is making Codex progress feel live.
+困难的部分不是静态布局。困难的部分是让 Codex 进度看起来是实时的。
 
-There are three levels of implementation:
+有三个实现级别：
 
-1. Snapshot polling: read `status.json`, `artifacts.json`, and `control.jsonl` periodically. This is sufficient for the first polished visual implementation.
-2. Structured progress events: Bridge writes step updates and artifact state changes as append-only events. The GUI subscribes or polls.
-3. Codex app-server live stream: GUI receives assistant deltas, tool calls, and run state from the persistent Codex backend through a controlled API.
+1. **快照轮询**：定期读取 `status.json`、`artifacts.json` 和 `control.jsonl`。这对于第一个精致的视觉实现来说已经足够。
+2. **结构化进度事件**：Bridge 将步骤更新和工件状态变化作为追加式事件写入。GUI 订阅或轮询。
+3. **Codex app-server 实时流**：GUI 通过受控 API 从持久的 Codex 后端接收助手增量、工具调用和运行状态。
 
-The first product GUI should be designed so level 1 works immediately and level 2/3 can replace the data source without redesigning the layout.
+第一个产品 GUI 应设计为级别 1 可以立即工作，级别 2/3 可以在不重新设计布局的情况下替换数据源。
 
-The GUI should not parse terminal text or tmux logs as the source of truth. Task protocol files and app-server events are the durable boundary.
+GUI 不应将终端文本或 tmux 日志作为事实来源。任务协议文件和 app-server 事件是持久的边界。
 
-## Open Design Reference Usage
+## 开放设计参考的使用
 
-Use `/home/lifei/.codex/open-design` as a design reference, not as the main runtime dependency.
+将 `/home/lifei/.codex/open-design` 用作设计参考，而不是主要运行时依赖。
 
-Recommended references:
+推荐参考：
 
-- `skills/dashboard`: layout thinking for sidebar + control panel surfaces.
-- `skills/critique`: post-build design review rubric.
-- `skills/tweaks`: later visual tuning suggestions.
-- `craft/anti-ai-slop.md`: avoid generic AI dashboard tropes.
-- `design-systems/application`: closest default style family for a light desktop app.
-- `design-systems/raycast`, `design-systems/superhuman`, or `design-systems/linear-app`: useful references for app precision, but avoid blindly copying dark-mode styles.
+- `skills/dashboard`：侧边栏 + 控制面板界面的布局思路。
+- `skills/critique`：构建后的设计评审模板。
+- `skills/tweaks`：后期的视觉调整建议。
+- `craft/anti-ai-slop.md`：避免通用的 AI 仪表盘模式。
+- `design-systems/application`：适用于浅色桌面应用的最近似默认样式族。
+- `design-systems/raycast`、`design-systems/superhuman` 或 `design-systems/linear-app`：关于应用精确度的有用参考，但避免盲目复制深色模式样式。
 
-Open Design should inform visual craft and review loops. It should not replace IM-Collab's Codex + superpowers orchestration boundary.
+开放设计应指导视觉工艺和评审循环。它不应取代 IM-Collab 的 Codex + superpowers 编排边界。
 
-## Visual Quality Bar
+## 视觉质量标准
 
-The first serious UI implementation should not be a throwaway minimal version.
+第一个严肃的 UI 实现不应是一个可丢弃的最小版本。
 
-Quality requirements:
+质量要求：
 
-- Match the reference screenshot composition closely.
-- Use stable three-column desktop layout.
-- Use restrained light surfaces, subtle borders, and calm blue/purple accents.
-- Keep cards at compact radius and avoid nested-card clutter.
-- Avoid decorative blobs, generic gradients, emoji icons, and invented metrics.
-- Use real-looking Agent-Pilot task data, not placeholder dashboard metrics.
-- Text must not overflow, collide, or resize containers unexpectedly.
-- Primary icon buttons should use a real icon library if available.
+- 紧密匹配参考截图布局。
+- 使用稳定的三列桌面布局。
+- 使用克制的浅色表面、细微的边框和冷静的蓝/紫色调。
+- 保持卡片紧凑的圆角，避免嵌套卡片混乱。
+- 避免装饰性斑点、通用的渐变、表情图标和捏造的指标。
+- 使用看起来真实的 Agent-Pilot 任务数据，而不是占位符仪表盘指标。
+- 文本不得溢出、碰撞或意外改变容器大小。
+- 主要图标按钮应使用真实的图标库（如果可用）。
 
-## Verification
+## 验证
 
-Visual verification should use browser screenshots.
+视觉验证应使用浏览器截图。
 
-Preferred path:
+推荐路径：
 
-- Playwright for deterministic screenshot and interaction checks.
-- Camoufox may be used if it is available globally and works better in the local environment.
+- 使用 Playwright 进行确定性的截图和交互检查。
 
-Required checks before considering the UI acceptable:
+在认为 UI 可接受之前需要执行的检查：
 
-- desktop screenshot at the same aspect ratio as the reference image
-- narrower desktop/tablet screenshot
-- search interaction
-- session selection
-- composer send action writes the expected control command
-- artifact card rendering for completed/generating/pending states
-- no visible layout overflow
+- 与参考图像相同宽高比的桌面截图
+- 较窄的桌面/平板截图
+- 搜索交互
+- 会话选择
+- 组合框发送操作写入预期的控制命令
+- 已完成/生成中/待处理状态的工件卡片渲染
+- 没有可见的布局溢出
 
-The visual target is not "roughly nicer than the current console". The target is high-fidelity enough that the screenshot reads as the same product family as the provided reference.
+视觉目标不是“比当前控制台粗略好看一点”。目标是高保真到截图看起来与提供的参考属于同一产品系列。
 
-## Product Decisions Still Open
+## 仍待决定的产品决策（这些决策是这一轮不触碰的）
 
-These should not block the first visual build, but they must stay visible:
+这些不应阻塞第一个视觉构建，但必须保持可见：
 
-- Whether the left "New task" button creates a GUI-only `/new` flow, opens a command composer, or is removed.
-- Whether "Plugins" should exist before a real plugin catalog exists.
-- Whether "Automation" should exist before a real automation model exists.
-- How much operator-only detail should be visible by default.
-- Whether the product GUI should eventually be a desktop shell, local web app, or both.
+- 左侧的“新任务”按钮是创建仅 GUI 的 `/new` 流程、打开命令组合框还是移除。
+- 在真正的插件目录存在之前，“插件”是否应该存在。
+- 在真正的自动化模型存在之前，“自动化”是否应该存在。
+- 默认情况下应显示多少仅限操作员的详细信息。
+- 产品 GUI 最终应该是桌面 Shell、本地 Web 应用还是两者兼有。
 
-## Non-Goals
+## 非目标
 
-- Do not make the GUI an agent planner or workflow router.
-- Do not reintroduce keyword-based intent classification in the frontend.
-- Do not expose raw Codex thread mechanics to ordinary users.
-- Do not build the final UI by continuing to enlarge the old Python string-based web console.
-- Do not hardcode fixed deliverables as document/slides/whiteboard in the task model.
+- 不要将 GUI 变成智能体规划器或工作流路由器。
+- 不要在前端重新引入基于关键词的意图分类。
+- 不要向普通用户暴露原始的 Codex 线程机制。
+- 不要通过继续扩大旧的 Python 字符串型 Web 控制台来构建最终 UI。
+- 不要将固定的交付物（如文档/幻灯片/白板）硬编码到任务模型中。
 
-## Near-Term Implementation Direction
+## 近期实施方向
 
-The recommended implementation path is:
+推荐的实施路径是：
 
-1. Keep the existing engineering console intact for debugging.
-2. Add a separate Flask-served product GUI surface, rather than mutating the old console into the final UI.
-3. Build a typed view adapter over task bindings, task status, control logs, and artifact items.
-4. Render the screenshot-like layout with realistic fixture data first.
-5. Wire session selection, search, artifact display, and composer control-command writing.
-6. Add polling or event streaming for live task state.
-7. Run Open Design-style critique and screenshot verification.
+1. 保留现有的工程控制台用于调试。
+2. 添加一个独立的 Flask 提供的产品 GUI 界面，而不是将旧控制台演变为最终 UI。
+3. 构建一个类型化的视图适配器，封装任务绑定、任务状态、控制日志和工件项。
+4. 首先使用逼真的固定数据渲染类似截图的布局。
+5. 连接会话选择、搜索、工件显示和组合框控制命令写入。
+6. 添加轮询或事件流以获取实时任务状态。
+7. 运行开放设计风格的评审和截图验证。
 
-This keeps frontend polish and backend correctness decoupled while still ensuring the product GUI reflects the real Agent-Pilot session model.
+这样可以保持前端打磨和后端正确性解耦，同时确保产品 GUI 反映真实的 Agent-Pilot 会话模型。
