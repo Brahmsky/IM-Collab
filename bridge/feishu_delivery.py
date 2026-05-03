@@ -46,9 +46,10 @@ def publish_task_artifacts_to_feishu(
     published: dict[str, dict[str, Any]] = {}
 
     document_item = _first_item(items, "document")
-    if document_item is not None and local_path(document_item) is not None:
+    document_path = _local_artifact_path(task_dir, document_item)
+    if document_item is not None and document_path is not None:
         doc_result = create_doc_from_markdown(
-            local_path(document_item) or Path(),
+            document_path,
             title=_artifact_title(artifacts, document_item, "方案"),
             runner=command_runner,
         )
@@ -68,9 +69,10 @@ def publish_task_artifacts_to_feishu(
         )
 
     slides_item = _first_item(items, "slides", "presentation")
-    if slides_item is not None and local_path(slides_item) is not None:
+    slides_path = _local_artifact_path(task_dir, slides_item)
+    if slides_item is not None and slides_path is not None:
         slides_result = create_slides_from_markdown(
-            local_path(slides_item) or Path(),
+            slides_path,
             title=_artifact_title(artifacts, slides_item, "Deck"),
             runner=command_runner,
         )
@@ -90,16 +92,17 @@ def publish_task_artifacts_to_feishu(
         )
 
     whiteboard_item = _first_item(items, "whiteboard", "diagram", "mermaid")
+    whiteboard_path = _local_artifact_path(task_dir, whiteboard_item)
     if (
         whiteboard_item is not None
-        and local_path(whiteboard_item) is not None
+        and whiteboard_path is not None
         and published.get("document", {}).get("remote", {}).get("document_id")
     ):
         document_id = str(published["document"]["remote"]["document_id"])
         whiteboard_block = append_whiteboard_to_doc(document_id, runner=runner)
         whiteboard_update = update_whiteboard_from_mermaid(
             whiteboard_block["whiteboard_token"],
-            local_path(whiteboard_item) or Path(),
+            whiteboard_path,
             idempotency_token=f"{artifacts['task_id']}-board",
             runner=runner,
         )
@@ -138,6 +141,15 @@ def _first_item(items: list[dict[str, Any]], *kinds: str) -> dict[str, Any] | No
         if values & wanted:
             return item
     return None
+
+
+def _local_artifact_path(task_dir: Path, item: dict[str, Any] | None) -> Path | None:
+    if item is None:
+        return None
+    path = local_path(item)
+    if path is None:
+        return None
+    return path if path.is_absolute() else task_dir / path
 
 
 def _artifact_title(artifacts: dict[str, Any], item: dict[str, Any], fallback: str) -> str:
