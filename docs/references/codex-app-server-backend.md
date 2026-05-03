@@ -54,7 +54,7 @@ Add a new runner path beside the current `codex exec` runner:
 3. Call `CodexAppServerBackend.start_task(task_dir)`.
 4. Store returned `thread_id` and `turn_id` in `tasks/task-bindings.json`.
 5. Consume app-server events until the turn completes.
-6. Validate `plan.json`, `document.md`, `slides.md`, `whiteboard.mmd`, and `artifacts.json`.
+6. Validate `plan.json`, `artifacts.json`, and whatever local artifact files are referenced by `artifacts.json` `items[]`.
 7. Mark `status.json` completed or failed.
 8. Publish artifacts through the existing Feishu delivery code.
 

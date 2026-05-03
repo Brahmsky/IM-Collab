@@ -193,7 +193,7 @@ def test_build_delivery_markdown_uses_user_facing_assistant_voice() -> None:
     )
 
     assert markdown.startswith("你好，我是你的办公协作助手。")
-    assert "文档生成完成" in markdown
+    assert "相关材料已经整理好" in markdown
     assert "还需要我根据群里的消息" in markdown
     assert "Codex" not in markdown
     assert "lark-cli" not in markdown
@@ -216,6 +216,6 @@ def test_build_delivery_card_contains_artifact_buttons() -> None:
     )
 
     assert card["config"]["wide_screen_mode"] is True
-    assert card["header"]["title"]["content"] == "办公材料已生成"
-    assert {"tag": "button", "text": {"tag": "plain_text", "content": "打开文档"}, "type": "primary", "url": "https://example/doc"} in card["elements"]
-    assert {"tag": "button", "text": {"tag": "plain_text", "content": "打开演示稿"}, "type": "default", "url": "https://example/slides"} in card["elements"]
+    assert card["header"]["title"]["content"] == "材料已生成"
+    assert {"tag": "button", "text": {"tag": "plain_text", "content": "打开document"}, "type": "primary", "url": "https://example/doc"} in card["elements"]
+    assert {"tag": "button", "text": {"tag": "plain_text", "content": "打开slides"}, "type": "default", "url": "https://example/slides"} in card["elements"]

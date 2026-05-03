@@ -541,12 +541,24 @@ def handle_console_action(
 
 
 def _task_card(task: Any) -> str:
-    error_html = f'<p class="error">错误：{escape(task.error)}</p>' if task.error else ""
-
-    document = getattr(task, "document_url", "") or ""
-    slides = getattr(task, "slides_url", "") or ""
-    whiteboard = getattr(task, "whiteboard_token", "") or ""
-    summary_text = escape(task.summary or "Agent 正在把群聊内容转为可交付的方案文档、演示稿与白板流程图。")
+    facts = [
+        ("updated", task.updated_at),
+        ("session", task.session_key),
+        ("thread", task.codex_thread_id),
+        ("turn", task.active_turn_id),
+        ("control", f"{task.control_count} queued" if task.control_count else ""),
+        ("last control", task.last_control_type),
+        ("ack", task.ack_operator),
+    ]
+    facts.extend(task.artifact_outputs)
+    fact_html = "\n".join(
+        f"<div><strong>{escape(label)}:</strong> {escape(value)}</div>" for label, value in facts if value
+    )
+    error_html = f'<p class="muted">error: {escape(task.error)}</p>' if task.error else ""
+    summary_text = escape(task.summary or "Agent 正在把群聊上下文转为用户要求的办公交付物。")
+    artifact_html = "".join(
+        _artifact_card(label, value, "等待生成") for label, value in task.artifact_outputs
+    ) or _artifact_card("交付产物", "", "等待生成")
 
     return f"""<section class="task">
   <div class="task-head">
@@ -574,26 +586,18 @@ def _task_card(task: Any) -> str:
     <div class="panel">
       <h3>② Agent 理解</h3>
       <div class="summary-box">{summary_text}</div>
-      <ul class="understanding-list">
-        <li><strong>目标：</strong>生成比赛答辩材料</li>
-        <li><strong>产物：</strong>方案文档 / 7 页答辩 PPT / 白板流程图</li>
-        <li><strong>待确认：</strong>是否固定 7 页 PPT？是否采用流程图白板？</li>
-      </ul>
       <div class="meta-grid">
-        <div><span>最新操作</span><strong>{escape(task.last_control_type or "无")}</strong></div>
-        <div><span>控制次数</span><strong>{task.control_count}</strong></div>
-        <div><span>Codex 线程</span><strong>{escape(task.codex_thread_id or "-")}</strong><span class="muted">活跃回合：{escape(task.active_turn_id or "-")}</span></div>
+        {fact_html}
       </div>
     </div>
 
     <div class="panel">
       <h3>③ 执行进度</h3>
       <ol class="timeline">
-        <li class="{_step_class(task, "intent")}"><span>理解 IM 意图</span></li>
+        <li class="{_step_class(task, "context")}"><span>读取 IM 上下文</span></li>
         <li class="{_step_class(task, "brief")}"><span>生成群聊 brief</span></li>
-        <li class="{_step_class(task, "doc")}"><span>生成方案文档</span></li>
-        <li class="{_step_class(task, "slides")}"><span>生成答辩 PPT</span></li>
-        <li class="{_step_class(task, "whiteboard")}"><span>生成白板流程图</span></li>
+        <li class="{_step_class(task, "execution")}"><span>Codex 执行任务</span></li>
+        <li class="{_step_class(task, "artifacts")}"><span>生成交付产物</span></li>
         <li class="{_step_class(task, "delivery")}"><span>汇总交付</span></li>
       </ol>
       <p class="muted">{escape(task.summary or "正在生成中...")}</p>
@@ -604,9 +608,7 @@ def _task_card(task: Any) -> str:
     <div class="panel">
       <h3>已生成产物</h3>
       <div class="artifact-grid">
-        {_artifact_card("方案文档", document, "等待生成")}
-        {_artifact_card("演示稿 PPT", slides, "等待生成")}
-        {_artifact_card("白板流程图", whiteboard, "等待生成")}
+        {artifact_html}
       </div>
       {error_html}
     </div>
@@ -666,20 +668,19 @@ def _step_class(task: Any, step: str) -> str:
     if state == "failed":
         return "failed"
 
-    if step == "intent":
+    if step == "context":
         return "done"
 
     if step == "brief":
         return "done" if state in {"running", "waiting_for_user", "completed"} else "todo"
 
-    if step == "doc":
-        return "done" if task.document_url or state == "completed" else ("active" if state == "running" else "todo")
+    if step == "execution":
+        return "done" if state == "completed" else ("active" if state == "running" else "todo")
 
-    if step == "slides":
-        return "done" if task.slides_url or state == "completed" else ("active" if state == "running" else "todo")
-
-    if step == "whiteboard":
-        return "done" if task.whiteboard_token or state == "completed" else ("active" if state == "running" else "todo")
+    if step == "artifacts":
+        if task.artifact_outputs or state == "completed":
+            return "done"
+        return "active" if state == "running" else "todo"
 
     if step == "delivery":
         return "done" if state == "completed" else ("active" if state == "running" else "todo")

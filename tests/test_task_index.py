@@ -25,14 +25,16 @@ def test_build_task_index_sorts_by_updated_at_and_extracts_remote_links(tmp_path
     )
     write_json(
         tasks_root / "old" / "artifacts.json",
-        {
-            "task_id": "old",
-            "document": {"remote": {"url": "https://example/doc-old"}},
-            "slides": {"remote": {"url": "https://example/slides-old"}},
-            "whiteboard": {"remote": {"whiteboard_token": "wb-old"}},
-            "summary": "old summary",
-            "next_steps": [],
-        },
+            {
+                "task_id": "old",
+                "items": [
+                    {"id": "brief", "kind": "brief", "remote": {"url": "https://example/doc-old"}},
+                    {"id": "deck", "kind": "deck", "remote": {"url": "https://example/slides-old"}},
+                    {"id": "board", "kind": "board", "remote": {"whiteboard_token": "wb-old"}},
+                ],
+                "summary": "old summary",
+                "next_steps": [],
+            },
     )
     write_json(
         tasks_root / "new" / "status.json",
@@ -46,22 +48,24 @@ def test_build_task_index_sorts_by_updated_at_and_extracts_remote_links(tmp_path
     )
     write_json(
         tasks_root / "new" / "artifacts.json",
-        {
-            "task_id": "new",
-            "document": {"remote": {"url": "https://example/doc-new"}},
-            "slides": {"remote": {"url": "https://example/slides-new"}},
-            "whiteboard": {"remote": {"whiteboard_token": "wb-new"}},
-            "summary": "new summary",
-            "next_steps": [],
-        },
+            {
+                "task_id": "new",
+                "items": [
+                    {"id": "brief", "kind": "brief", "remote": {"url": "https://example/doc-new"}},
+                    {"id": "deck", "kind": "deck", "remote": {"url": "https://example/slides-new"}},
+                    {"id": "board", "kind": "board", "remote": {"whiteboard_token": "wb-new"}},
+                ],
+                "summary": "new summary",
+                "next_steps": [],
+            },
     )
 
     index = build_task_index(tasks_root)
 
     assert [task.task_id for task in index] == ["new", "old"]
-    assert index[0].document_url == "https://example/doc-new"
-    assert index[0].slides_url == "https://example/slides-new"
-    assert index[0].whiteboard_token == "wb-new"
+    assert ("brief", "https://example/doc-new") in index[0].artifact_outputs
+    assert ("deck", "https://example/slides-new") in index[0].artifact_outputs
+    assert ("board", "wb-new") in index[0].artifact_outputs
     assert index[0].summary == "new summary"
 
 
@@ -83,7 +87,7 @@ def test_build_task_index_includes_failed_task_error(tmp_path: Path) -> None:
     assert len(index) == 1
     assert index[0].state == "failed"
     assert index[0].error == "Feishu permission denied"
-    assert index[0].document_url == ""
+    assert index[0].artifact_outputs == ()
 
 
 def test_task_index_shows_waiting_confirmation_controls(tmp_path: Path) -> None:

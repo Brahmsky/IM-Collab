@@ -91,3 +91,32 @@ def test_consumer_moves_failed_events_to_failed_dir(tmp_path: Path) -> None:
     assert failed_file.exists()
     state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert state["failed_message_ids"] == ["om_123"]
+
+
+def test_consumer_processes_card_action_events(tmp_path: Path) -> None:
+    event_dir = tmp_path / "events"
+    event_dir.mkdir()
+    event_file = event_dir / "card.action.trigger_a.json"
+    event_file.write_text(
+        json.dumps(
+            {
+                "type": "card.action.trigger",
+                "message_id": "om_card",
+                "chat_id": "oc_123",
+                "open_id": "ou_user",
+                "action": {"value": {"action": "start_task", "task_id": "task-1"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    processed: list[Path] = []
+
+    consumer = EventConsumer(
+        EventConsumerConfig(event_dir=event_dir, tasks_root=tmp_path / "tasks", state_path=tmp_path / "state.json"),
+        handler=lambda path: processed.append(path),
+    )
+
+    assert consumer.process_once() == 1
+    assert processed == [event_file]
+    state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert state["processed_message_ids"] == ["om_card"]

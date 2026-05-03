@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
 
@@ -16,6 +15,7 @@ ANNOTATION_TYPES = {
     "attachment_reference",
     "conflict",
     "open_question",
+    "source_note",
 }
 
 
@@ -23,8 +23,9 @@ def build_group_brief(chat_id: str, messages: list[dict[str, Any]]) -> dict[str,
     source_messages = [_normalize_message(index, message) for index, message in enumerate(messages, start=1)]
     annotations: list[dict[str, Any]] = []
     for message in source_messages:
-        annotations.extend(_annotations_for_message(len(annotations), message))
-    annotations.extend(_conflict_annotations(len(annotations), source_messages))
+        annotations.append(_annotation(len(annotations) + 1, "source_note", _sentence(message["content"]), message, confidence="source"))
+        if message.get("attachments"):
+            annotations.append(_annotation(len(annotations) + 1, "attachment_reference", "该消息包含附件引用。", message))
     brief = {
         "chat_id": chat_id,
         "source_messages": source_messages,
@@ -188,55 +189,6 @@ def _normalize_message(index: int, message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _annotations_for_message(offset: int, message: dict[str, Any]) -> list[dict[str, Any]]:
-    content = message["content"]
-    annotations: list[dict[str, Any]] = []
-    if _mentions_deadline(content):
-        annotations.append(_annotation(offset + len(annotations) + 1, "deadline", _sentence(content), message))
-    if any(term in content for term in ("提交", "上传", "交到", "发到", "提交方式")):
-        annotations.append(_annotation(offset + len(annotations) + 1, "submission_method", _sentence(content), message))
-    if any(term in content for term in ("文档", "Markdown", "word", "Word", "docx", "方案")):
-        annotations.append(_annotation(offset + len(annotations) + 1, "document_requirement", _sentence(content), message))
-    if any(term in content for term in ("PPT", "ppt", "演示稿", "幻灯片", "页")):
-        annotations.append(_annotation(offset + len(annotations) + 1, "slides_requirement", _sentence(content), message))
-    if any(term in content for term in ("白板", "流程图", "流程", "Mermaid")):
-        annotations.append(_annotation(offset + len(annotations) + 1, "whiteboard_requirement", _sentence(content), message))
-    if any(term in content for term in ("负责", "分工", "你来", "我来")):
-        annotations.append(_annotation(offset + len(annotations) + 1, "assignment", _sentence(content), message))
-    if message.get("attachments"):
-        annotations.append(_annotation(offset + len(annotations) + 1, "attachment_reference", "该消息包含附件引用。", message))
-    if any(term in content for term in ("？", "?", "确认", "不确定", "是不是")):
-        annotations.append(
-            _annotation(offset + len(annotations) + 1, "open_question", _sentence(content), message, confidence="medium", needs_confirmation=True)
-        )
-    return annotations
-
-
-def _conflict_annotations(offset: int, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    slide_page_mentions: list[tuple[str, str]] = []
-    for message in messages:
-        content = message["content"]
-        if not any(term in content for term in ("PPT", "ppt", "演示稿", "幻灯片")):
-            continue
-        pages = re.findall(r"(\d+)\s*页", content)
-        for page in pages:
-            slide_page_mentions.append((message["message_id"], page))
-    page_values = {page for _, page in slide_page_mentions}
-    if len(page_values) <= 1:
-        return []
-    evidence = [message_id for message_id, _ in slide_page_mentions]
-    return [
-        {
-            "annotation_id": f"ann_{offset + 1:03d}",
-            "type": "conflict",
-            "claim": f"PPT 页数出现多个版本：{', '.join(sorted(page_values))} 页，需要人工确认。",
-            "evidence_message_ids": evidence,
-            "confidence": "medium",
-            "needs_confirmation": True,
-        }
-    ]
-
-
 def _summary_from_annotations(annotations: list[dict[str, Any]], source_message_count: int) -> dict[str, Any]:
     summary = {
         "source_message_count": source_message_count,
@@ -297,12 +249,6 @@ def _annotation_from_evidence(number: int, evidence: dict[str, Any]) -> dict[str
         "needs_confirmation": needs_confirmation,
         "extractor": str(evidence.get("extractor") or "external"),
     }
-
-
-def _mentions_deadline(content: str) -> bool:
-    return any(term in content for term in ("截止", "前", "周一", "周二", "周三", "周四", "周五", "周六", "周日")) and any(
-        term in content for term in ("提交", "交", "完成", "截止", "前")
-    )
 
 
 def _sentence(content: str) -> str:

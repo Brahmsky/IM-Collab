@@ -67,14 +67,15 @@ def test_deliver_task_to_feishu_publishes_artifacts_and_replies(tmp_path: Path) 
     result = deliver_task_to_feishu(task_dir, message_id="om_123", runner=fake_run, dry_run_reply=True)
 
     artifacts = read_artifacts(task_dir)
+    items = {item["kind"]: item for item in artifacts["items"]}
     assert result["task_id"] == "im-om_123"
-    assert artifacts["document"]["remote"]["url"] == "https://example.feishu.cn/docx/doc_123"
-    assert artifacts["slides"]["remote"]["slides_added"] == 8
-    assert artifacts["whiteboard"]["remote"]["whiteboard_token"] == "whiteboard_123"
-    assert artifacts["whiteboard"]["remote"]["created_node_id"] == "t1:2"
+    assert items["document"]["remote"]["url"] == "https://example.feishu.cn/docx/doc_123"
+    assert items["slides"]["remote"]["slides_added"] == 8
+    assert items["whiteboard"]["remote"]["whiteboard_token"] == "whiteboard_123"
+    assert items["whiteboard"]["remote"]["created_node_id"] == "t1:2"
     reply_call = next(call for call in calls if call[:3] == ["lark-cli", "im", "+messages-reply"])
     assert reply_call[reply_call.index("--msg-type") + 1] == "interactive"
-    assert "办公材料已生成" in reply_call[reply_call.index("--content") + 1]
+    assert "材料已生成" in reply_call[reply_call.index("--content") + 1]
     assert "--markdown" not in reply_call
 
 
@@ -111,8 +112,9 @@ def test_publish_task_artifacts_to_feishu_does_not_reply(tmp_path: Path) -> None
 
     result = publish_task_artifacts_to_feishu(task_dir, runner=fake_run)
 
-    assert result["artifacts"]["document"]["remote"]["url"] == "doc_url"
+    items = {item["kind"]: item for item in result["artifacts"]["items"]}
+    assert items["document"]["remote"]["url"] == "doc_url"
     delivery_card = json.loads((task_dir / "delivery_card.json").read_text(encoding="utf-8"))
-    assert delivery_card["header"]["title"]["content"] == "办公材料已生成"
+    assert delivery_card["header"]["title"]["content"] == "材料已生成"
     assert "doc_url" in str(delivery_card)
     assert not any(call[:3] == ["lark-cli", "im", "+messages-reply"] for call in calls)

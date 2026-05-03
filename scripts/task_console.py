@@ -44,12 +44,8 @@ def render_plain(tasks_root: Path, event_dir: Path, limit: int, state: str | Non
             lines.append(f"  error: {_clip(task.error)}")
         if task.summary:
             lines.append(f"  summary: {_clip(task.summary)}")
-        if task.document_url:
-            lines.append(f"  document: {task.document_url}")
-        if task.slides_url:
-            lines.append(f"  slides: {task.slides_url}")
-        if task.whiteboard_token:
-            lines.append(f"  whiteboard: {task.whiteboard_token}")
+        for label, value in task.artifact_outputs:
+            lines.append(f"  {label}: {value}")
     return "\n".join(lines) + "\n"
 
 

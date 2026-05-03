@@ -45,9 +45,8 @@ def test_build_codex_task_prompt_is_file_protocol_only(tmp_path: Path) -> None:
 
     assert "request.md" in prompt
     assert "plan.json" in prompt
-    assert "document.md" in prompt
-    assert "slides.md" in prompt
-    assert "whiteboard.mmd" in prompt
+    assert "items" in prompt
+    assert "Do not force every task into document/slides/whiteboard" in prompt
     assert "Do not call Feishu" in prompt
     assert "Do not modify repository source files" in prompt
 

@@ -33,10 +33,7 @@ def test_dispatch_event_via_golembot_forwards_and_replies(tmp_path: Path) -> Non
     ) -> dict[str, object]:
         seen["publish"] = publish
         seen["generator"] = generator
-        return {
-            "session_key": "feishu:oc_456:ou_789",
-            "response": {"finalText": "日志。任务 `gb-123` 已完成。\n\n**文档**: doc"},
-        }
+        return {"session_key": "feishu:oc_456:ou_789", "response": {"finalText": "日志。任务 `gb-123` 已完成。"}}
 
     def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
         seen["message_id"] = message_id
@@ -57,27 +54,14 @@ def test_dispatch_event_via_golembot_forwards_and_replies(tmp_path: Path) -> Non
     assert seen["publish"] is False
     assert seen["generator"] == "app-server"
     assert seen["message_id"] == "om_123"
-    assert seen["markdown"].startswith("任务 `gb-123` 已完成")
+    assert seen["markdown"] == "日志。任务 `gb-123` 已完成。"
     assert seen["dry_run"] is True
     assert result["reply"]["ok"] is True
 
 
-def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_path: Path) -> None:
+def test_dispatch_event_via_golembot_does_not_publish_by_reply_text_prefix(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"
-    task_dir = tasks_root / "gb-session"
-    task_dir.mkdir(parents=True)
-    (tasks_root / "task-bindings.json").write_text(
-        json.dumps(
-            {
-                "feishu:oc_456:ou_789": {
-                    "session_key": "feishu:oc_456:ou_789",
-                    "active_task_id": "gb-session",
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
     event_path.write_text(
         json.dumps(
             {
@@ -86,7 +70,7 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
                 "chat_id": "oc_456",
                 "chat_type": "p2p",
                 "message_type": "text",
-                "content": "继续刚才的任务",
+            "content": "继续刚才的任务",
                 "sender_id": "ou_789",
             }
         ),
@@ -102,10 +86,7 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
         generator: str = "codex",
     ) -> dict[str, object]:
         seen["forward_publish"] = publish
-        return {
-            "session_key": "feishu:oc_456:ou_789",
-            "response": {"finalText": "任务 `gb-session` 已完成。\n\n**文档**: local"},
-        }
+        return {"session_key": "feishu:oc_456:ou_789", "response": {"finalText": "任务 `gb-session` 已完成。"}}
 
     def fake_publisher(published_task_dir: Path) -> dict[str, object]:
         seen["published_task_dir"] = published_task_dir
@@ -138,7 +119,7 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
         event_path,
         gateway_url="http://127.0.0.1:3199",
         token="secret",
-        publish=True,
+        publish=False,
         execute_reply=True,
         tasks_root=tasks_root,
         forwarder=fake_forwarder,
@@ -148,12 +129,12 @@ def test_dispatch_event_via_golembot_publishes_after_codex_outside_golembot(tmp_
     )
 
     assert seen["forward_publish"] is False
-    assert seen["published_task_dir"] == task_dir
-    assert "markdown_reply" not in seen
-    assert seen["card_reply"]["card_path"] == task_dir / "delivery_card.json"
+    assert "published_task_dir" not in seen
+    assert seen["markdown"] == "任务 `gb-session` 已完成。"
+    assert "card_reply" not in seen
 
 
-def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path) -> None:
+def test_dispatch_event_runs_office_task_in_publish_mode_without_keyword_routing(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"
     task_dir = tasks_root / "im-om_123"
@@ -165,7 +146,7 @@ def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path
                 "chat_id": "oc_456",
                 "chat_type": "p2p",
                 "message_type": "text",
-                "content": "生成复盘文档、6 页演示稿和白板流程",
+                "content": "这是一条没有办公关键词的 @bot 请求",
                 "sender_id": "ou_789",
             }
         ),
@@ -175,7 +156,7 @@ def test_dispatch_event_runs_office_task_outside_golembot_runtime(tmp_path: Path
 
     def fake_forwarder(*args, **kwargs) -> dict[str, object]:
         seen["forwarded"] = True
-        return {}
+        return {"session_key": "feishu:oc_456:ou_789", "response": {"finalText": "收到。"}}
 
     def fake_office_runner(**kwargs) -> dict[str, object]:
         seen["office_kwargs"] = kwargs

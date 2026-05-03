@@ -26,7 +26,7 @@ def test_run_golembot_office_task_creates_task_and_returns_reply(tmp_path: Path)
     assert read_status(task_dir)["state"] == "completed"
     assert read_artifacts(task_dir)["task_id"] == "gb-test-task"
     assert result["reply_markdown"].startswith("你好，我是你的办公协作助手。")
-    assert "文档生成完成" in result["reply_markdown"]
+    assert "相关材料已经整理好" in result["reply_markdown"]
     assert get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")["last_task_id"] == "gb-test-task"
     assert get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")["active_task_id"] is None
 
@@ -132,7 +132,18 @@ def test_run_golembot_office_task_can_use_selected_langextract_brief_backend(tmp
     assert evidence["evidence"][0]["extractor"] == "fake-langextract"
 
 
-def test_run_golembot_office_task_waits_for_user_when_group_brief_has_conflicts(tmp_path: Path) -> None:
+def test_run_golembot_office_task_waits_for_user_when_external_brief_has_conflicts(tmp_path: Path) -> None:
+    def fake_evidence_extractor(messages, **kwargs):
+        return [
+            {
+                "kind": "conflict",
+                "claim": "页数要求存在冲突，需要人工确认。",
+                "source_message_ids": ["om_1", "om_2"],
+                "confidence": "medium",
+                "extractor": "fake-langextract",
+            }
+        ]
+
     result = run_golembot_office_task(
         message="根据刚才讨论生成方案和 PPT",
         session_key="feishu:oc_group",
@@ -146,6 +157,8 @@ def test_run_golembot_office_task_waits_for_user_when_group_brief_has_conflicts(
             {"message_id": "om_1", "sender_id": "teacher", "content": "PPT 不超过 8 页。"},
             {"message_id": "om_2", "sender_id": "ou_a", "content": "我记得 PPT 可以 10 页？"},
         ],
+        brief_extractor="langextract-deepseek",
+        evidence_extractor=fake_evidence_extractor,
     )
 
     task_dir = tmp_path / "waiting-brief-task"
@@ -158,7 +171,7 @@ def test_run_golembot_office_task_waits_for_user_when_group_brief_has_conflicts(
     card = json.loads((task_dir / "confirmation_card.json").read_text(encoding="utf-8"))
     assert card["header"]["title"]["content"] == "请确认群聊需求"
     assert card["elements"][-2]["value"] == {"action": "start_task", "task_id": "waiting-brief-task"}
-    assert "PPT 页数出现多个版本" in result["reply_markdown"]
+    assert "页数要求存在冲突" in result["reply_markdown"]
     assert result["state"] == "waiting_for_user"
 
 
@@ -204,7 +217,8 @@ def test_run_golembot_office_task_can_publish_without_im_reply(tmp_path: Path) -
     )
 
     artifacts = read_artifacts(tmp_path / "gb-publish-task")
-    assert artifacts["document"]["remote"]["url"] == "doc_url"
+    items = {item["kind"]: item for item in artifacts["items"]}
+    assert items["document"]["remote"]["url"] == "doc_url"
     assert "doc_url" in result["reply_markdown"]
     assert not any(call[:3] == ["lark-cli", "im", "+messages-reply"] for call in calls)
 

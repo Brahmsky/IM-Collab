@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from bridge.feishu_events import parse_im_event
+from bridge.feishu_events import is_card_action_event, parse_card_action_event, parse_im_event
 
 Handler = Callable[[Path], None]
 
@@ -18,7 +18,7 @@ class EventConsumerConfig:
     tasks_root: Path
     state_path: Path
     bot_open_ids: frozenset[str] = field(default_factory=frozenset)
-    glob_pattern: str = "im.message.receive_v1_*.json"
+    glob_pattern: str = "*.json"
     poll_interval_seconds: float = 1.0
 
 
@@ -34,26 +34,26 @@ class EventConsumer:
 
         for event_path in sorted(self.config.event_dir.glob(self.config.glob_pattern)):
             payload = _read_json(event_path)
-            parsed = parse_im_event(payload)
-            if parsed.message_id in state["processed_message_ids"]:
+            event_id, sender_open_id = _event_identity(payload)
+            if event_id in state["processed_message_ids"]:
                 continue
-            if parsed.message_id in state["failed_message_ids"]:
+            if event_id in state["failed_message_ids"]:
                 continue
-            if parsed.sender_open_id in self.config.bot_open_ids:
-                _append_unique(state, "skipped_message_ids", parsed.message_id)
-                _append_unique(state, "processed_message_ids", parsed.message_id)
+            if sender_open_id in self.config.bot_open_ids:
+                _append_unique(state, "skipped_message_ids", event_id)
+                _append_unique(state, "processed_message_ids", event_id)
                 self._save_state(state)
                 continue
 
             try:
                 self.handler(event_path)
             except Exception:
-                _append_unique(state, "failed_message_ids", parsed.message_id)
+                _append_unique(state, "failed_message_ids", event_id)
                 self._move_failed(event_path)
                 self._save_state(state)
                 continue
 
-            _append_unique(state, "processed_message_ids", parsed.message_id)
+            _append_unique(state, "processed_message_ids", event_id)
             self._save_state(state)
             processed_count += 1
 
@@ -89,6 +89,14 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError(f"event json root must be an object: {path}")
     return data
+
+
+def _event_identity(payload: dict[str, Any]) -> tuple[str, str]:
+    if is_card_action_event(payload):
+        parsed = parse_card_action_event(payload)
+        return parsed.message_id or json.dumps(parsed.value, sort_keys=True, ensure_ascii=False), parsed.sender_open_id
+    parsed = parse_im_event(payload)
+    return parsed.message_id, parsed.sender_open_id
 
 
 def _append_unique(state: dict[str, list[str]], key: str, value: str) -> None:

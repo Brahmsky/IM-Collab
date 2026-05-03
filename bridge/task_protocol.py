@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 VALID_STATES = frozenset({"queued", "running", "waiting_for_user", "completed", "failed"})
-REQUIRED_ARTIFACT_FIELDS = frozenset({"task_id", "document", "slides", "whiteboard", "summary", "next_steps"})
+REQUIRED_ARTIFACT_FIELDS = frozenset({"task_id", "summary", "next_steps"})
 
 
 class ProtocolError(ValueError):
@@ -71,10 +71,25 @@ def _validate_artifacts(artifacts: dict[str, Any]) -> None:
     missing = sorted(REQUIRED_ARTIFACT_FIELDS - set(artifacts))
     if missing:
         raise ProtocolError(f"missing artifact fields: {', '.join(missing)}")
-    for key in ("document", "slides", "whiteboard"):
-        value = artifacts.get(key)
-        if not isinstance(value, dict) or not value.get("path"):
-            raise ProtocolError(f"artifact {key} must be an object with path")
+    items = artifacts.get("items")
+    if items is not None:
+        if not isinstance(items, list):
+            raise ProtocolError("artifact items must be a list")
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ProtocolError(f"artifact item {index} must be an object")
+            if not item.get("id") and not item.get("kind"):
+                raise ProtocolError(f"artifact item {index} must have id or kind")
+            if not item.get("path") and not item.get("remote"):
+                raise ProtocolError(f"artifact item {index} must have path or remote")
+        return
+    deliverable_keys = [
+        key
+        for key, value in artifacts.items()
+        if key not in REQUIRED_ARTIFACT_FIELDS and isinstance(value, dict) and (value.get("path") or value.get("remote"))
+    ]
+    if not deliverable_keys:
+        raise ProtocolError("artifacts must contain items or at least one deliverable object")
 
 
 def _read_json(path: Path) -> dict[str, Any]:

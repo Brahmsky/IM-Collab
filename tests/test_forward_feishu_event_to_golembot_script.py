@@ -75,5 +75,5 @@ def test_forward_script_can_dry_run_reply_from_response_file(tmp_path: Path) -> 
     )
 
     result = json.loads(completed.stdout)
-    assert result["reply_markdown"].startswith("任务 `gb-123` 已完成")
+    assert result["reply_markdown"].startswith("日志。任务 `gb-123` 已完成")
     assert result["reply"]["dry_run"] is True

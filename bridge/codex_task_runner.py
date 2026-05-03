@@ -4,11 +4,12 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from bridge.artifacts import artifact_items, local_path
 from bridge.task_protocol import read_artifacts, read_status, write_status
 
 Runner = Callable[[list[str]], str]
 
-REQUIRED_CODEX_OUTPUTS = ("plan.json", "document.md", "slides.md", "whiteboard.mmd", "artifacts.json")
+REQUIRED_CODEX_OUTPUTS = ("plan.json", "artifacts.json")
 
 
 def build_codex_task_prompt(task_dir: Path) -> str:
@@ -29,25 +30,24 @@ Do not modify repository source files. Only write inside `{_display_path(task_di
 
 Required outputs:
 - `plan.json`: object with `task_id` and `steps`; each step has `id`, `title`, and `status`.
-- `document.md`: project方案 document in Markdown.
-- `slides.md`: 6-10 slide outline in Markdown, using `## Slide N: Title` headings.
-- `whiteboard.mmd`: Mermaid flowchart.
-- `artifacts.json`: must contain `task_id`, `document`, `slides`, `whiteboard`, `summary`, and `next_steps`.
+- Local artifact files that fit the user's request. Do not force every task into document/slides/whiteboard if the user asked for something else.
+- `artifacts.json`: contains `task_id`, `items`, `summary`, and `next_steps`.
 
-`document`, `slides`, and `whiteboard` in `artifacts.json` MUST be objects, not strings:
+Each entry in `items` describes one produced artifact:
 
 ```json
 {{
   "task_id": "{task_dir.name}",
-  "document": {{"type": "markdown", "path": "{_display_path(task_dir / 'document.md')}"}},
-  "slides": {{"type": "markdown", "path": "{_display_path(task_dir / 'slides.md')}"}},
-  "whiteboard": {{"type": "mermaid", "path": "{_display_path(task_dir / 'whiteboard.mmd')}"}},
+  "items": [
+    {{"id": "brief", "kind": "document", "type": "markdown", "path": "{_display_path(task_dir / 'brief.md')}"}},
+    {{"id": "deck", "kind": "slides", "type": "markdown", "path": "{_display_path(task_dir / 'deck.md')}"}}
+  ],
   "summary": "...",
   "next_steps": []
 }}
 ```
 
-Use relative or absolute paths in `artifacts.json` that point to the files you created. Mark the task as complete by writing valid `artifacts.json`; do not publish to Feishu yourself.
+Use relative or absolute paths in `artifacts.json` that point to the files you created. Preserve the user's requested artifact shape instead of mapping it into fixed fields. Mark the task as complete by writing valid `artifacts.json`; do not publish to Feishu yourself.
 """
 
 
@@ -81,7 +81,7 @@ This task includes a source-grounded group brief:
 - `{_display_path(brief_json)}`
 - `{_display_path(brief_md)}`
 
-Use `brief.json` as the primary evidence layer for group-chat requirements. Do not add requirements that are not present in the brief or `request.md`. If the brief marks conflicts or open questions, preserve them in `document.md`, `slides.md`, and `next_steps` instead of silently resolving them.
+Use `brief.json` as the primary evidence layer for group-chat requirements. Do not add requirements that are not present in the brief or `request.md`. If the brief marks conflicts or open questions, preserve them in generated artifacts and `next_steps` instead of silently resolving them.
 """
 
 
@@ -136,6 +136,7 @@ def run_codex_task(
             _subprocess_runner(args)
         _validate_codex_outputs(task_dir)
         artifacts = read_artifacts(task_dir)
+        _validate_artifact_item_paths(artifacts, task_dir=task_dir)
     except Exception as exc:
         write_status(task_dir, "failed", error=f"missing Codex output or invalid artifact contract: {exc}")
         raise
@@ -149,6 +150,16 @@ def _validate_codex_outputs(task_dir: Path) -> None:
         path = task_dir / filename
         if not path.exists():
             raise FileNotFoundError(f"missing Codex output: {path}")
+
+
+def _validate_artifact_item_paths(artifacts: dict[str, Any], task_dir: Path | None = None) -> None:
+    for item in artifact_items(artifacts):
+        path = local_path(item)
+        if path is None:
+            continue
+        resolved = path if path.is_absolute() or task_dir is None else task_dir / path
+        if not resolved.exists():
+            raise FileNotFoundError(f"missing artifact item file: {resolved}")
 
 
 def _subprocess_runner(args: list[str]) -> str:

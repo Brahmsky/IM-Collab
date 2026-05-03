@@ -25,9 +25,10 @@ def test_run_local_smoke_writes_completed_office_artifacts(tmp_path: Path) -> No
     assert status["error"] is None
     assert artifacts == read_artifacts(task_dir)
     assert artifacts["task_id"] == "demo-local-smoke"
-    assert artifacts["document"]["path"].endswith("document.md")
-    assert artifacts["slides"]["path"].endswith("slides.md")
-    assert artifacts["whiteboard"]["path"].endswith("whiteboard.mmd")
+    paths = {item["kind"]: item["path"] for item in artifacts["items"]}
+    assert paths["document"].endswith("document.md")
+    assert paths["slides"].endswith("slides.md")
+    assert paths["whiteboard"].endswith("whiteboard.mmd")
     assert "Codex + superpowers" in artifacts["summary"]
     assert artifacts["next_steps"] == [
         "Replace the local smoke runner with Codex CLI execution.",

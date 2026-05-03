@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, CodexTurn, StdioAppServerTransport
-from bridge.codex_task_runner import REQUIRED_CODEX_OUTPUTS
+from bridge.codex_task_runner import REQUIRED_CODEX_OUTPUTS, _validate_artifact_item_paths
+from bridge.task_protocol import read_artifacts
 from bridge.task_control import read_control_commands
 from bridge.task_protocol import write_status
 
@@ -71,6 +72,7 @@ def _validate_outputs(task_dir: Path) -> None:
         path = task_dir / filename
         if not path.exists():
             raise FileNotFoundError(f"missing Codex output: {path}")
+    _validate_artifact_item_paths(read_artifacts(task_dir), task_dir=task_dir)
 
 
 def _wait_for_task(

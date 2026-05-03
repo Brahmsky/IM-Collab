@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
+from bridge.artifacts import artifact_items, local_path, upsert_item
 from bridge.lark_docs import create_doc_from_markdown
 from bridge.lark_im import build_delivery_card, reply_card_to_message
 from bridge.lark_slides import create_slides_from_markdown
@@ -41,51 +42,86 @@ def publish_task_artifacts_to_feishu(
 ) -> dict[str, Any]:
     artifacts = read_artifacts(task_dir)
     command_runner = _adapt_runner(runner)
+    items = artifact_items(artifacts)
+    published: dict[str, dict[str, Any]] = {}
 
-    doc_result = create_doc_from_markdown(
-        Path(artifacts["document"]["path"]),
-        title=f"IM-Collab {artifacts['task_id']} 方案",
-        runner=command_runner,
-    )
-    document = doc_result["response"]["data"]["document"]
+    document_item = _first_item(items, "document")
+    if document_item is not None and local_path(document_item) is not None:
+        doc_result = create_doc_from_markdown(
+            local_path(document_item) or Path(),
+            title=_artifact_title(artifacts, document_item, "方案"),
+            runner=command_runner,
+        )
+        document = doc_result["response"]["data"]["document"]
+        published["document"] = upsert_item(
+            artifacts,
+            str(document_item.get("id") or document_item.get("kind") or "document"),
+            {
+                **document_item,
+                "remote": {
+                    "provider": "feishu",
+                    "document_id": document["document_id"],
+                    "url": document["url"],
+                    "log_id": doc_result["response"].get("data", {}).get("log_id"),
+                },
+            },
+        )
 
-    slides_result = create_slides_from_markdown(
-        Path(artifacts["slides"]["path"]),
-        title=f"IM-Collab {artifacts['task_id']} Deck",
-        runner=command_runner,
-    )
-    slides = slides_result["response"]["data"]
+    slides_item = _first_item(items, "slides", "presentation")
+    if slides_item is not None and local_path(slides_item) is not None:
+        slides_result = create_slides_from_markdown(
+            local_path(slides_item) or Path(),
+            title=_artifact_title(artifacts, slides_item, "Deck"),
+            runner=command_runner,
+        )
+        slides = slides_result["response"]["data"]
+        published["slides"] = upsert_item(
+            artifacts,
+            str(slides_item.get("id") or slides_item.get("kind") or "slides"),
+            {
+                **slides_item,
+                "remote": {
+                    "provider": "feishu",
+                    "xml_presentation_id": slides["xml_presentation_id"],
+                    "url": slides["url"],
+                    "slides_added": slides.get("slides_added"),
+                },
+            },
+        )
 
-    whiteboard_block = append_whiteboard_to_doc(document["document_id"], runner=runner)
-    whiteboard_update = update_whiteboard_from_mermaid(
-        whiteboard_block["whiteboard_token"],
-        Path(artifacts["whiteboard"]["path"]),
-        idempotency_token=f"{artifacts['task_id']}-board",
-        runner=runner,
-    )
+    whiteboard_item = _first_item(items, "whiteboard", "diagram", "mermaid")
+    if (
+        whiteboard_item is not None
+        and local_path(whiteboard_item) is not None
+        and published.get("document", {}).get("remote", {}).get("document_id")
+    ):
+        document_id = str(published["document"]["remote"]["document_id"])
+        whiteboard_block = append_whiteboard_to_doc(document_id, runner=runner)
+        whiteboard_update = update_whiteboard_from_mermaid(
+            whiteboard_block["whiteboard_token"],
+            local_path(whiteboard_item) or Path(),
+            idempotency_token=f"{artifacts['task_id']}-board",
+            runner=runner,
+        )
+        published["whiteboard"] = upsert_item(
+            artifacts,
+            str(whiteboard_item.get("id") or whiteboard_item.get("kind") or "whiteboard"),
+            {
+                **whiteboard_item,
+                "remote": {
+                    "provider": "feishu",
+                    "document_id": document_id,
+                    "whiteboard_token": whiteboard_block["whiteboard_token"],
+                    "block_id": whiteboard_block["block_id"],
+                    "created_node_id": whiteboard_update["created_node_id"],
+                },
+            },
+        )
 
-    artifacts["document"]["remote"] = {
-        "provider": "feishu",
-        "document_id": document["document_id"],
-        "url": document["url"],
-        "log_id": doc_result["response"].get("data", {}).get("log_id"),
-    }
-    artifacts["slides"]["remote"] = {
-        "provider": "feishu",
-        "xml_presentation_id": slides["xml_presentation_id"],
-        "url": slides["url"],
-        "slides_added": slides.get("slides_added"),
-    }
-    artifacts["whiteboard"]["remote"] = {
-        "provider": "feishu",
-        "document_id": document["document_id"],
-        "whiteboard_token": whiteboard_block["whiteboard_token"],
-        "block_id": whiteboard_block["block_id"],
-        "created_node_id": whiteboard_update["created_node_id"],
-    }
-    artifacts["summary"] = (
-        f"{artifacts['summary']} Published to Feishu document, slides, and whiteboard via lark-cli."
-    )
+    if not published:
+        raise ValueError("no publishable artifact items found")
+
+    artifacts["summary"] = f"{artifacts['summary']} Published to Feishu via lark-cli."
     write_artifacts(task_dir, artifacts)
     (task_dir / "delivery_card.json").write_text(
         json.dumps(build_delivery_card(artifacts), ensure_ascii=False, indent=2) + "\n",
@@ -93,6 +129,19 @@ def publish_task_artifacts_to_feishu(
     )
 
     return {"task_id": artifacts["task_id"], "artifacts": artifacts}
+
+
+def _first_item(items: list[dict[str, Any]], *kinds: str) -> dict[str, Any] | None:
+    wanted = {kind.lower() for kind in kinds}
+    for item in items:
+        values = {str(item.get("kind") or "").lower(), str(item.get("type") or "").lower(), str(item.get("id") or "").lower()}
+        if values & wanted:
+            return item
+    return None
+
+
+def _artifact_title(artifacts: dict[str, Any], item: dict[str, Any], fallback: str) -> str:
+    return str(item.get("title") or f"IM-Collab {artifacts['task_id']} {fallback}")
 
 
 def _adapt_runner(runner: Runner | None):

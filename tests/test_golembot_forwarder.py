@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bridge.golembot_forwarder import build_golembot_prompt, extract_reply_markdown, forward_event_to_golembot
+from bridge.golembot_forwarder import build_golembot_prompt, forward_event_to_golembot
 
 
 def test_build_golembot_prompt_includes_event_metadata() -> None:
@@ -75,9 +75,3 @@ def test_forward_event_to_golembot_posts_chat_request_with_codex_generator() -> 
     assert "生成项目方案" in seen["payload"]["message"]
     assert "--generator codex" in seen["payload"]["message"]
     assert result["response"]["finalText"] == "任务完成"
-
-
-def test_extract_reply_markdown_prefers_task_delivery_section() -> None:
-    final_text = "准备中。任务 `gb-123` 已完成。\n\n**文档**: doc\n\n**摘要**\n完成"
-
-    assert extract_reply_markdown(final_text).startswith("任务 `gb-123` 已完成")

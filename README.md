@@ -323,7 +323,7 @@ tasks/<task_id>/request.md       用户请求和群聊上下文
 tasks/<task_id>/brief.json       source-grounded 群聊旁批汇总，机器可读
 tasks/<task_id>/brief.md         source-grounded 群聊旁批汇总，人可读
 tasks/<task_id>/status.json      queued/running/waiting_for_user/completed/failed
-tasks/<task_id>/artifacts.json   文档、Slides、白板、摘要、下一步
+tasks/<task_id>/artifacts.json   items[] 产物清单、摘要、下一步
 tasks/<task_id>/delivery_card.json 交付消息卡片 payload
 tasks/<task_id>/control.jsonl    追加指令、打断等运行中控制命令
 ```
@@ -362,9 +362,9 @@ rtk .venv/bin/python scripts/task_console.py append <task_id> --text "补充移�
 rtk .venv/bin/python scripts/task_console.py interrupt <task_id>
 ```
 
-群聊任务会在生成正式产物前先写 `brief.json` 和 `brief.md`。后续文档、PPT、白板应优先使用这两个文件里的证据，不要直接凭原始群聊自由发挥。
+群聊任务会在生成正式产物前先写 `brief.json` 和 `brief.md`。默认 briefing 只保留源消息旁批，不用 Python 关键词去猜截止时间、PPT 页数或分工；需要结构化事实抽取时显式启用 LangExtract + DeepSeek。后续产物应优先使用这两个文件里的证据，但最终语义判断交给 Codex。
 
-可选实验：LangExtract + DeepSeek V4 Flash 可以作为群聊旁批汇总前的证据抽取器。它不替代 Codex、app-server、任务协议或飞书交付，只负责把标准群聊上下文抽成 `evidence.json`。默认主链路仍使用本地规则型 `group_briefing`。
+可选实验：LangExtract + DeepSeek V4 Flash 可以作为群聊旁批汇总前的证据抽取器。它不替代 Codex、app-server、任务协议或飞书交付，只负责把标准群聊上下文抽成 `evidence.json`。默认主链路只做源消息容器，不做关键词语义抽取。
 
 安装可选依赖：
 
@@ -420,7 +420,7 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
 
 飞书卡片按钮回调会作为 `card.action.trigger` 事件进入同一个 consumer。`start_task` 会恢复对应的 waiting task；其他卡片动作会先进入 `control.jsonl`，供后续任务继续执行时读取。
 
-完成发布的任务还会写出 `delivery_card.json`，包含文档和演示稿按钮。事件分发和手动 `deliver_task_to_feishu` 会优先发送这张 interactive 卡片；Markdown 交付文本仍保留为回退和控制台展示。
+完成发布的任务还会写出 `delivery_card.json`，卡片内容来自 `artifacts.json` 的 `items[]`，不再假设固定只有文档和演示稿。事件分发和手动 `deliver_task_to_feishu` 会优先发送这张 interactive 卡片；Markdown 交付文本仍保留为回退和控制台展示。
 
 后续用户在同一活跃会话里继续发消息时，消息会优先作为运行中任务的追加指令；任务已完成后的修改需求会复用同一 Codex thread，并在 prompt 中带上已有 `artifacts.json`，尽量围绕原文档/Slides 修改而不是创建无关副本。
 

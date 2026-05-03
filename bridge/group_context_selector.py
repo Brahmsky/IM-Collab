@@ -19,32 +19,6 @@ PRIORITY_TAGS = {
     "bot_request",
 }
 
-PRIORITY_TERMS = (
-    "截止",
-    "更正",
-    "最终",
-    "新版",
-    "旧版",
-    "不要用",
-    "不要再用",
-    "必须",
-    "要求",
-    "提醒",
-    "确认",
-    "待确认",
-    "冲突",
-    "预算",
-    "提交",
-    "材料",
-    "命名",
-    "负责",
-    "分工",
-    "PPT",
-    "申请书",
-    "签字",
-)
-
-
 def select_briefing_context(
     messages: list[dict[str, Any]],
     max_messages: int = 45,
@@ -76,8 +50,7 @@ def _is_priority_message(message: dict[str, Any]) -> bool:
         return True
     if message.get("attachments"):
         return True
-    content = str(message.get("content") or "")
-    return any(term in content for term in PRIORITY_TERMS)
+    return False
 
 
 def _trim_selected(
@@ -98,8 +71,6 @@ def _priority_score(message: dict[str, Any]) -> int:
     score += 5 * len(tags & {"formal_notice", "deadline", "correction", "conflict", "final", "latest"})
     score += 4 * len(tags & {"budget_rule", "requirement", "decision", "open_question", "bot_request"})
     score += 3 if message.get("attachments") else 0
-    content = str(message.get("content") or "")
-    score += sum(1 for term in PRIORITY_TERMS if term in content)
     return score
 
 

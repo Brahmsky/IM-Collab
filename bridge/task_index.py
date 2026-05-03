@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from bridge.artifacts import artifact_items, remote_label
+
 
 @dataclass(frozen=True)
 class TaskSummary:
@@ -14,9 +16,7 @@ class TaskSummary:
     updated_at: str
     error: str
     summary: str
-    document_url: str
-    slides_url: str
-    whiteboard_token: str
+    artifact_outputs: tuple[tuple[str, str], ...]
     session_key: str
     codex_thread_id: str
     active_turn_id: str
@@ -70,9 +70,7 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
         updated_at=str(status.get("updated_at") or ""),
         error=str(status.get("error") or ""),
         summary=str(artifacts.get("summary") or ""),
-        document_url=_remote_value(artifacts, "document", "url"),
-        slides_url=_remote_value(artifacts, "slides", "url"),
-        whiteboard_token=_remote_value(artifacts, "whiteboard", "whiteboard_token"),
+        artifact_outputs=tuple(_artifact_outputs(artifacts)),
         session_key=str(binding.get("session_key") or ""),
         codex_thread_id=str(binding.get("codex_thread_id") or ""),
         active_turn_id=str(binding.get("active_turn_id") or ""),
@@ -85,14 +83,14 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
     )
 
 
-def _remote_value(artifacts: dict[str, Any], key: str, field: str) -> str:
-    value = artifacts.get(key, {})
-    if not isinstance(value, dict):
-        return ""
-    remote = value.get("remote", {})
-    if not isinstance(remote, dict):
-        return ""
-    return str(remote.get(field) or "")
+def _artifact_outputs(artifacts: dict[str, Any]) -> list[tuple[str, str]]:
+    outputs = []
+    for item in artifact_items(artifacts):
+        label = str(item.get("title") or item.get("kind") or item.get("id") or "artifact")
+        value = remote_label(item)
+        if value:
+            outputs.append((label, value))
+    return outputs
 
 
 def _read_json(path: Path) -> dict[str, Any]:

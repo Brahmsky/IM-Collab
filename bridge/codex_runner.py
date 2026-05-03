@@ -19,7 +19,7 @@ Use existing office wheels first:
 
 Do not use OMO or OMX. Do not implement office-suite behavior from scratch when an existing tool can do it.
 
-Write progress to `{status_path}` and final delivery metadata to `{artifacts_path}`. Completion is valid only when `artifacts.json` contains document, slides, whiteboard, summary, and next_steps.
+Write progress to `{status_path}` and final delivery metadata to `{artifacts_path}`. Completion is valid only when `artifacts.json` preserves the user's requested outputs as `items[]`, plus `summary` and `next_steps`.
 """
 
 

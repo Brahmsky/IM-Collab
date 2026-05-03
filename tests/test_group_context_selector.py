@@ -6,7 +6,7 @@ from bridge.group_context import build_standard_group_context
 from bridge.group_context_selector import select_briefing_context
 
 
-def test_select_briefing_context_prioritizes_formal_corrections_final_files_and_questions() -> None:
+def test_select_briefing_context_uses_backend_tags_attachments_and_recent_tail() -> None:
     messages = [
         {"message_id": "om_1", "content": "闲聊", "tags": ["noise"]},
         {"message_id": "om_2", "content": "正式通知：4 月 28 日截止", "tags": ["formal_notice", "deadline"]},
@@ -20,6 +20,18 @@ def test_select_briefing_context_prioritizes_formal_corrections_final_files_and_
     selected = select_briefing_context(messages, max_messages=5, recent_tail=1)
 
     assert [message["message_id"] for message in selected] == ["om_2", "om_4", "om_5", "om_6", "om_7"]
+
+
+def test_select_briefing_context_does_not_keyword_scan_untagged_messages() -> None:
+    messages = [
+        {"message_id": "om_1", "content": "正式通知：这句话包含很多看似重要的词，但是没有后端 tag。"},
+        {"message_id": "om_2", "content": "普通消息"},
+        {"message_id": "om_3", "content": "最近消息"},
+    ]
+
+    selected = select_briefing_context(messages, max_messages=1, recent_tail=1)
+
+    assert [message["message_id"] for message in selected] == ["om_3"]
 
 
 def test_select_briefing_context_keeps_recent_tail_when_priority_messages_fill_budget() -> None:

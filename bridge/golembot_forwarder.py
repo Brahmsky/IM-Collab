@@ -96,14 +96,6 @@ def _parse_sse_or_json(text: str) -> dict[str, Any]:
     return json.loads(text)
 
 
-def extract_reply_markdown(final_text: str) -> str:
-    marker = "任务 `"
-    index = final_text.find(marker)
-    if index >= 0:
-        return final_text[index:].strip()
-    return final_text.strip()
-
-
 def _shell_safe(value: str) -> str:
     return value.replace('"', '\\"')
 

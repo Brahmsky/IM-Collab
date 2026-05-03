@@ -71,9 +71,10 @@ def test_write_and_read_artifacts(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "demo-task", "hello")
     artifacts = {
         "task_id": "demo-task",
-        "document": {"type": "markdown", "path": "tasks/demo-task/document.md"},
-        "slides": {"type": "markdown", "path": "tasks/demo-task/slides.md"},
-        "whiteboard": {"type": "mermaid", "path": "tasks/demo-task/whiteboard.mmd"},
+        "items": [
+            {"id": "brief", "kind": "document", "type": "markdown", "path": "tasks/demo-task/brief.md"},
+            {"id": "deck", "kind": "slides", "type": "markdown", "path": "tasks/demo-task/deck.md"},
+        ],
         "summary": "Generated local office artifacts.",
         "next_steps": ["Connect Feishu webhook."],
     }
@@ -101,5 +102,5 @@ def test_read_artifacts_rejects_string_artifact_paths(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(ProtocolError, match="artifact document must be an object with path"):
+    with pytest.raises(ProtocolError, match="artifacts must contain items"):
         read_artifacts(task_dir)

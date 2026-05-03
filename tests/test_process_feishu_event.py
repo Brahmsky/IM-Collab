@@ -108,7 +108,8 @@ def test_process_event_file_can_run_delivery_flow(tmp_path: Path) -> None:
         runner=fake_runner,
     )
 
-    assert result["delivery"]["artifacts"]["document"]["remote"]["url"] == "doc_url"
+    items = {item["kind"]: item for item in result["delivery"]["artifacts"]["items"]}
+    assert items["document"]["remote"]["url"] == "doc_url"
     assert result["reply"] is None
     binding = get_task_binding(tmp_path / "tasks" / "task-bindings.json", "feishu:oc_456")
     assert binding["active_task_id"] is None

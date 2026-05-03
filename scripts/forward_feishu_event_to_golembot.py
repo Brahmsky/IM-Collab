@@ -9,7 +9,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from bridge.golembot_forwarder import build_golembot_prompt, forward_event_to_golembot
-from bridge.golembot_forwarder import extract_reply_markdown
 from bridge.feishu_events import parse_im_event
 from bridge.lark_im import reply_to_message
 from bridge.task_binding import build_golembot_session_key
@@ -64,7 +63,7 @@ def main() -> int:
 def _reply_from_forwarded_response(message_id: str, forwarded: dict[str, object], dry_run: bool) -> dict[str, object]:
     response = forwarded.get("response", {})
     final_text = response.get("finalText", "") if isinstance(response, dict) else ""
-    reply_markdown = extract_reply_markdown(str(final_text))
+    reply_markdown = str(final_text).strip()
     reply = reply_to_message(
         message_id,
         reply_markdown,

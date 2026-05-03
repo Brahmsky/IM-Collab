@@ -23,9 +23,11 @@ def run_local_smoke(task_dir: Path) -> dict[str, Any]:
 
     artifacts = {
         "task_id": task_id,
-        "document": {"type": "markdown", "path": document_path.as_posix()},
-        "slides": {"type": "markdown", "path": slides_path.as_posix()},
-        "whiteboard": {"type": "mermaid", "path": whiteboard_path.as_posix()},
+        "items": [
+            {"id": "document", "kind": "document", "type": "markdown", "path": document_path.as_posix()},
+            {"id": "slides", "kind": "slides", "type": "markdown", "path": slides_path.as_posix()},
+            {"id": "whiteboard", "kind": "whiteboard", "type": "mermaid", "path": whiteboard_path.as_posix()},
+        ],
         "summary": "Local MVP completed with Codex + superpowers as the orchestration boundary.",
         "next_steps": [
             "Replace the local smoke runner with Codex CLI execution.",

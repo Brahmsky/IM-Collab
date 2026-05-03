@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
+from urllib.parse import quote
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -120,7 +120,7 @@ Use Codex + superpowers as the only orchestration layer. Prefer Feishu CLI built
 
 ## Acceptance Criteria
 
-- Create or update Feishu document, slides, and whiteboard artifacts.
+- Create or update the Feishu artifacts requested by the user.
 - Write final delivery metadata to artifacts.json.
 - Reply to the source Feishu message with artifact links.
 """
@@ -160,4 +160,4 @@ def _require(mapping: dict[str, Any], key: str) -> str:
 
 
 def _safe_id(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value)
+    return quote(value, safe="A-Za-z0-9_.-")

@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from bridge.feishu_events import is_card_action_event, parse_card_action_event, parse_im_event
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
-from bridge.golembot_forwarder import extract_reply_markdown, forward_event_to_golembot
+from bridge.golembot_forwarder import forward_event_to_golembot
 from bridge.golembot_office_loop import run_golembot_office_task
 from bridge.lark_im import list_chat_messages
 from bridge.lark_im import build_delivery_markdown, reply_to_message
@@ -87,7 +87,7 @@ def dispatch_event_via_golembot(
             "reply": reply,
         }
 
-    if publish and _is_office_deliverable(parsed.text):
+    if publish:
         task_id = _task_id(parsed.message_id)
         task_result = office_runner(
             message=parsed.text,
@@ -130,23 +130,18 @@ def dispatch_event_via_golembot(
     forwarded = forwarder(payload, gateway_url, token, publish=False, generator=generator)
     response = forwarded.get("response", {})
     final_text = response.get("finalText", "") if isinstance(response, dict) else ""
-    reply_markdown = extract_reply_markdown(str(final_text))
-    publish_result = None
-    if publish and reply_markdown.startswith("任务 `"):
-        publish_result = _publish_bound_task(tasks_root, str(forwarded["session_key"]), publisher)
-        reply_markdown = build_delivery_markdown(publish_result["artifacts"])
-    task_dir = _bound_task_dir(tasks_root, str(forwarded["session_key"])) if publish_result else None
+    reply_markdown = str(final_text).strip()
     reply = _reply_with_optional_card(
         parsed.message_id,
         reply_markdown,
         f"{parsed.message_id}-golembot-forwarded",
         not execute_reply,
-        task_dir=task_dir,
+        task_dir=None,
         card_name="delivery_card.json",
         replier=replier,
         card_replier=card_replier,
     )
-    return {**forwarded, "publish": publish_result, "reply_markdown": reply_markdown, "reply": reply}
+    return {**forwarded, "publish": None, "reply_markdown": reply_markdown, "reply": reply}
 
 
 def _dispatch_card_action(
@@ -204,18 +199,6 @@ def _dispatch_card_action(
         return {"task_id": parsed.task_id, "control": command, "task": task_result, "publish": publish_result, "reply": reply}
     reply = replier(parsed.message_id, "已记录你的补充。", f"{parsed.message_id}-card-action", not execute_reply)
     return {"task_id": parsed.task_id, "control": command, "reply": reply}
-
-
-def _publish_bound_task(tasks_root: Path, session_key: str, publisher: Publisher) -> dict[str, Any]:
-    return publisher(_bound_task_dir(tasks_root, session_key))
-
-
-def _bound_task_dir(tasks_root: Path, session_key: str) -> Path:
-    binding = get_task_binding(tasks_root / "task-bindings.json", session_key)
-    task_id = binding.get("active_task_id") if binding else None
-    if not task_id:
-        raise RuntimeError(f"no active task binding for session {session_key}")
-    return tasks_root / str(task_id)
 
 
 def _reply_with_optional_card(
@@ -295,14 +278,6 @@ def _append_to_waiting_task_if_available(
         operator="feishu",
     )
     return {"task_id": str(task_id), "control": command}
-
-
-def _is_office_deliverable(text: str) -> bool:
-    action_terms = ("生成", "整理", "创建", "输出", "做", "写")
-    artifact_terms = ("文档", "方案", "演示稿", "PPT", "幻灯片", "白板", "流程", "纪要", "报告")
-    if any(term in text for term in action_terms) and any(term in text for term in artifact_terms):
-        return True
-    return "IM-Collab" in text and "6" in text
 
 
 def _task_id(message_id: str) -> str:

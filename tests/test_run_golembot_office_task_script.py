@@ -36,7 +36,7 @@ def test_run_golembot_office_task_script_outputs_reply_markdown(tmp_path: Path) 
     result = json.loads(completed.stdout)
     assert result["task_id"] == "gb-cli-task"
     assert result["reply_markdown"].startswith("你好，我是你的办公协作助手。")
-    assert "文档生成完成" in result["reply_markdown"]
+    assert "相关材料已经整理好" in result["reply_markdown"]
     assert (tmp_path / "gb-cli-task" / "artifacts.json").exists()
 
 

@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from bridge.artifacts import artifact_items, remote_label, remote_url
 from bridge.lark_docs import _extract_json
 
 Runner = Callable[[list[str]], str]
@@ -119,64 +120,44 @@ def list_chat_messages(
 
 
 def build_delivery_markdown(artifacts: dict[str, Any]) -> str:
-    document = _remote_value(artifacts, "document", "url")
-    slides = _remote_value(artifacts, "slides", "url")
-    whiteboard = _remote_value(artifacts, "whiteboard", "whiteboard_token")
-    return f"""你好，我是你的办公协作助手。文档生成完成，相关材料已经整理好：
-
-文档
-{document}
-
-演示稿
-{slides}
-
-白板
-{whiteboard}
-
-还需要我根据群里的消息补充背景、调整 PPT 结构，或者继续把这份内容整理成会议纪要/待办吗？
-"""
+    lines = ["你好，我是你的办公协作助手。相关材料已经整理好：", ""]
+    items = artifact_items(artifacts)
+    if not items:
+        lines.append(str(artifacts.get("summary") or "任务已完成。"))
+    for item in items:
+        label = str(item.get("title") or item.get("kind") or item.get("id") or "材料")
+        value = remote_label(item) or "已生成"
+        lines.extend([label, value, ""])
+    lines.append("还需要我根据群里的消息补充背景、调整结构，或者继续整理成会议纪要/待办吗？")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def build_delivery_card(artifacts: dict[str, Any]) -> dict[str, Any]:
-    document = _remote_value(artifacts, "document", "url")
-    slides = _remote_value(artifacts, "slides", "url")
-    whiteboard = _remote_value(artifacts, "whiteboard", "whiteboard_token")
-    elements: list[dict[str, Any]] = [
-        {"tag": "markdown", "content": "文档、演示稿和白板已经生成。可以直接打开查看，也可以继续在群里补充修改要求。"},
-        {
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "打开文档"},
-            "type": "primary",
-            "url": document,
-        },
-        {
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "打开演示稿"},
-            "type": "default",
-            "url": slides,
-        },
-    ]
-    if whiteboard and whiteboard != "未生成":
-        elements.append({"tag": "markdown", "content": f"白板：{whiteboard}"})
+    elements: list[dict[str, Any]] = [{"tag": "markdown", "content": "材料已经生成。可以直接打开查看，也可以继续在群里补充修改要求。"}]
+    for index, item in enumerate(artifact_items(artifacts)):
+        label = str(item.get("title") or item.get("kind") or item.get("id") or "材料")
+        url = remote_url(item)
+        if url:
+            elements.append(
+                {
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": f"打开{label}"},
+                    "type": "primary" if index == 0 else "default",
+                    "url": url,
+                }
+            )
+        else:
+            value = remote_label(item)
+            if value:
+                elements.append({"tag": "markdown", "content": f"{label}: {value}"})
     return {
         "config": {"wide_screen_mode": True},
         "header": {
             "template": "green",
-            "title": {"tag": "plain_text", "content": "办公材料已生成"},
+            "title": {"tag": "plain_text", "content": "材料已生成"},
         },
         "elements": elements,
     }
-
-
-def _remote_value(artifacts: dict[str, Any], key: str, field: str) -> str:
-    value = artifacts.get(key, {})
-    if isinstance(value, dict):
-        remote = value.get("remote", {})
-        if isinstance(remote, dict) and remote.get(field):
-            return str(remote[field])
-        if value.get("path"):
-            return str(value["path"])
-    return "未生成"
 
 
 def _subprocess_runner(args: list[str]) -> str:
