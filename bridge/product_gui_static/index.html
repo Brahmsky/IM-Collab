@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent-Pilot</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div id="app" class="shell" data-loading="true">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">A</div>
+        <div class="brand-name">Agent-Pilot</div>
+        <button class="collapse-btn" aria-label="收起侧边栏">≪</button>
+      </div>
+
+      <nav class="utility">
+        <button class="utility-item" type="button" data-action="new"><span class="icon">＋</span><span>新任务</span></button>
+        <label class="utility-item search-shell"><span class="icon">⌕</span><input id="sessionSearch" type="search" placeholder="搜索"></label>
+        <button class="utility-item" type="button" disabled><span class="icon">⌘</span><span>插件</span></button>
+        <button class="utility-item" type="button" disabled><span class="icon">◷</span><span>自动化</span></button>
+      </nav>
+
+      <div class="sidebar-section-title">任务</div>
+      <div id="groupList" class="group-list"></div>
+
+      <button class="settings" type="button"><span class="icon">⚙</span><span>设置</span></button>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <button id="sessionTitle" class="session-title" type="button">加载中</button>
+        <div class="window-actions" aria-label="窗口操作">
+          <button type="button" aria-label="最小化">−</button>
+          <button type="button" aria-label="最大化">□</button>
+          <button type="button" aria-label="关闭">×</button>
+          <button type="button" aria-label="运行">▷</button>
+          <button type="button" aria-label="打开">↗</button>
+        </div>
+      </header>
+
+      <section class="conversation">
+        <div id="userBubble" class="user-bubble">根据项目群聊整理第二周周报，并生成 PPT 大纲和回传消息。</div>
+        <div class="agent-row">
+          <div class="agent-avatar">A</div>
+          <div class="agent-content">
+            <p id="agentMessage" class="agent-message">收到，正在为你梳理并生成相关材料，执行计划如下：</p>
+            <ol id="stepList" class="step-list"></ol>
+            <div id="artifactSummary" class="artifact-summary">已生成 0 个产物</div>
+            <div id="centerArtifacts" class="center-artifacts"></div>
+            <p class="closing-note">将持续推进剩余任务，完成后通知你。</p>
+          </div>
+        </div>
+      </section>
+
+      <form id="composer" class="composer">
+        <input id="composerInput" name="text" autocomplete="off" placeholder="继续告诉 Agent：例如 “补充团队分工”、“生成 PPT 初稿”、“回传到飞书群”">
+        <button class="composer-tool" type="button" aria-label="附件">⌘</button>
+        <button class="composer-tool" type="button" aria-label="调节">☷</button>
+        <button class="send-btn" type="submit" aria-label="发送">↗</button>
+      </form>
+      <p class="footnote">Agent Pilot 可能会出错，请结合实际情况判断。</p>
+    </main>
+
+    <aside class="inspector">
+      <section class="detail-card">
+        <div class="panel-title">
+          <h2>任务详情</h2>
+          <button type="button" aria-label="折叠">⌃</button>
+        </div>
+        <dl id="taskMeta" class="meta-list"></dl>
+        <div class="divider"></div>
+        <div class="artifact-head">
+          <strong>产物</strong>
+          <span id="artifactCount" class="count">0</span>
+        </div>
+        <div id="sideArtifacts" class="side-artifacts"></div>
+        <button class="all-artifacts" type="button">查看全部产物 <span>›</span></button>
+      </section>
+    </aside>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
