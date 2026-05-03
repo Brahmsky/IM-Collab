@@ -37,23 +37,23 @@ def build_workspace_view(tasks_root: Path = Path("tasks")) -> dict[str, Any]:
     tasks = {task.task_id: task for task in build_task_index(tasks_root)}
     groups: dict[str, dict[str, Any]] = {}
 
-    for index, (session_id, binding) in enumerate(bindings.items()):
+    for session_id, binding in bindings.items():
         task = _task_for_binding(binding, tasks)
         group_id = str(binding.get("chat_id") or _group_id_from_session(session_id))
         group = groups.setdefault(
             group_id,
             {
                 "group_id": group_id,
-                "group_name": str(binding.get("chat_name") or _fallback_group_name(group_id, len(groups))),
+                "group_name": str(binding.get("chat_name") or group_id or _group_id_from_session(session_id)),
                 "sessions": [],
             },
         )
-        group["sessions"].append(_session_summary(session_id, binding, task, index))
+        group["sessions"].append(_session_summary(session_id, binding, task))
 
     for group in groups.values():
         group["sessions"].sort(key=lambda item: item["updated_at"], reverse=True)
 
-    ordered_groups = sorted(groups.values(), key=lambda item: _group_rank(str(item["group_name"])))
+    ordered_groups = sorted(groups.values(), key=lambda item: str(item["group_name"]))
     selected = _first_active_session(ordered_groups)
     return {
         "groups": ordered_groups,
@@ -79,18 +79,18 @@ def build_selected_session_view(tasks_root: Path, session_id: str) -> dict[str, 
     artifact_views = [_artifact_view(item, task.state) for item in artifact_items(artifacts)]
     return {
         "session_id": session_id,
-        "title": str(binding.get("session_title") or _title_from_task(task, 0)),
-        "source_group": str(binding.get("chat_name") or _fallback_group_name(str(binding.get("chat_id") or ""), 0)),
-        "user_request": _display_request(request or task.summary),
+        "title": str(binding.get("session_title") or _title_from_task(task)),
+        "source_group": str(binding.get("chat_name") or binding.get("chat_id") or _group_id_from_session(session_id)),
+        "user_request": request or task.summary,
         "agent_messages": [_agent_message(task, artifact_views)],
         "execution_steps": [asdict(step) for step in _execution_steps(task, artifact_views)],
         "artifacts": [asdict(item) for item in artifact_views],
         "task_detail": {
-            "task_id": _display_task_id(task.task_id),
+            "task_id": task.task_id,
             "state": task.state,
             "created_at": task.created_at,
             "updated_at": task.updated_at,
-            "target": _display_target(task, artifact_views),
+            "target": task.summary,
             "codex_thread_id": task.codex_thread_id,
             "active_turn_id": task.active_turn_id,
             "artifact_count": len(artifact_views),
@@ -155,11 +155,10 @@ def _session_summary(
     session_id: str,
     binding: dict[str, Any],
     task: TaskSummary | None,
-    index: int,
 ) -> dict[str, Any]:
     return {
         "session_id": session_id,
-        "title": str(binding.get("session_title") or _title_from_task(task, index) if task else _title_from_session(session_id)),
+        "title": str(binding.get("session_title") or _title_from_task(task) if task else _title_from_session(session_id)),
         "state": task.state if task else "unknown",
         "updated_at": task.updated_at if task else str(binding.get("updated_at") or ""),
         "active_task_id": str(binding.get("active_task_id") or ""),
@@ -192,7 +191,7 @@ def _artifact_view(item: dict[str, Any], task_state: str) -> ArtifactView:
     return ArtifactView(
         id=str(item.get("id") or item.get("kind") or "artifact"),
         kind=str(item.get("kind") or item.get("type") or "artifact"),
-        title=_display_artifact_title(item),
+        title=str(item.get("title") or item.get("id") or item.get("kind") or "artifact"),
         format_hint=_format_hint(item, path),
         status=status,
         value=value,
@@ -201,18 +200,10 @@ def _artifact_view(item: dict[str, Any], task_state: str) -> ArtifactView:
 
 
 def _format_hint(item: dict[str, Any], path: str) -> str:
-    kind = str(item.get("kind") or "file")
-    if kind in {"document", "brief"}:
-        return "docx · 1,240 字"
-    if kind in {"slides", "deck"}:
-        return "md · 8 页大纲"
-    if kind in {"text", "reply"}:
-        return "txt · 312 字"
-    if kind in {"whiteboard", "board"}:
-        return "mmd"
     suffix = Path(path).suffix.removeprefix(".")
     if suffix:
         return suffix
+    kind = str(item.get("kind") or "file")
     return kind
 
 
@@ -235,10 +226,10 @@ def _execution_steps(task: TaskSummary, artifacts: list[ArtifactView]) -> list[E
         delivery_status = "todo"
 
     return [
-        ExecutionStepView("context", "读取项目群聊上下文，提取关键信息与待办", "done"),
-        ExecutionStepView("brief", "整理第二周周进展与成果，撰写简报草稿", "done" if task.state in {"running", "waiting_for_user", "completed"} else "todo"),
-        ExecutionStepView("artifacts", "生成 PPT 大纲", artifact_status if artifact_status != "done" else execution_status),
-        ExecutionStepView("delivery", "撰写回传消息草稿", delivery_status),
+        ExecutionStepView("context", "读取会话上下文", "done"),
+        ExecutionStepView("brief", "整理关键信息与待办", "done" if task.state in {"running", "waiting_for_user", "completed"} else "todo"),
+        ExecutionStepView("artifacts", "生成交付产物", artifact_status if artifact_status != "done" else execution_status),
+        ExecutionStepView("delivery", "回传或等待用户确认", delivery_status),
     ]
 
 
@@ -297,18 +288,7 @@ def _first_active_session(groups: list[dict[str, Any]]) -> str:
     return ""
 
 
-def _title_from_task(task: TaskSummary | None, index: int = 0) -> str:
-    demo_titles = [
-        "第二阶段汇报材料",
-        "产品方案评审准备",
-        "团队分工整理",
-        "客户反馈分析报告",
-        "本周问题汇总",
-        "Q2 运营复盘",
-        "数据看板总结",
-    ]
-    if task and _looks_internal_id(task.task_id):
-        return demo_titles[index % len(demo_titles)]
+def _title_from_task(task: TaskSummary | None) -> str:
     if task and task.summary:
         return task.summary[:28]
     if task:
@@ -325,17 +305,6 @@ def _group_id_from_session(session_id: str) -> str:
     return parts[1] if len(parts) > 1 else session_id
 
 
-def _fallback_group_name(group_id: str, index: int = 0) -> str:
-    demo_names = ["项目答辩群", "客户反馈群", "运营复盘群"]
-    if group_id == "oc_project":
-        return "项目答辩群"
-    if _looks_internal_id(group_id):
-        return demo_names[index % len(demo_names)]
-    if group_id:
-        return group_id
-    return "未绑定群聊"
-
-
 def _demo_bindings(tasks_root: Path) -> dict[str, dict[str, Any]]:
     tasks = build_task_index(tasks_root)
     if tasks:
@@ -344,69 +313,10 @@ def _demo_bindings(tasks_root: Path) -> dict[str, dict[str, Any]]:
             task.session_key or f"local:{task.task_id}": {
                 "session_key": task.session_key or f"local:{task.task_id}",
                 "chat_id": "local",
-                "chat_name": "本地任务",
+                "chat_name": "local",
                 "session_title": _title_from_task(task),
                 "active_task_id": task.task_id if task.state == "running" else None,
                 "last_task_id": task.task_id,
             }
         }
     return {}
-
-
-def _looks_internal_id(value: str) -> bool:
-    return len(value) > 18 and ("_" in value or value.startswith(("oc", "ou", "gb-", "im-")))
-
-
-def _display_request(value: str) -> str:
-    stripped = " ".join(value.split())
-    if not stripped:
-        return "根据项目群聊整理第二周简报，并生成 PPT 大纲和回传消息。"
-    if len(stripped) > 34:
-        return "根据项目群聊整理第二周简报，并生成 PPT 大纲和回传消息。"
-    return stripped
-
-
-def _display_target(task: TaskSummary, artifacts: list[ArtifactView]) -> str:
-    kinds = {item.kind for item in artifacts}
-    labels = []
-    if {"document", "brief"} & kinds:
-        labels.append("简报")
-    if {"slides", "deck"} & kinds:
-        labels.append("PPT")
-    if {"text", "reply"} & kinds:
-        labels.append("回传消息")
-    if not labels and {"whiteboard", "board"} & kinds:
-        labels.append("白板流程")
-    return " / ".join(labels) if labels else (task.summary[:20] if task.summary else "办公交付物")
-
-
-def _display_artifact_title(item: dict[str, Any]) -> str:
-    explicit = item.get("title")
-    if explicit:
-        return str(explicit)
-    kind = str(item.get("kind") or item.get("id") or "artifact")
-    labels = {
-        "document": "简报草稿",
-        "brief": "简报草稿",
-        "slides": "PPT 大纲",
-        "deck": "PPT 大纲",
-        "text": "回传消息草稿",
-        "reply": "回传消息草稿",
-        "whiteboard": "白板流程图",
-        "board": "白板流程图",
-    }
-    return labels.get(kind, "交付产物")
-
-
-def _group_rank(name: str) -> tuple[int, str]:
-    preferred = ["项目答辩群", "客户反馈群", "运营复盘群"]
-    try:
-        return (preferred.index(name), name)
-    except ValueError:
-        return (len(preferred), name)
-
-
-def _display_task_id(task_id: str) -> str:
-    if _looks_internal_id(task_id):
-        return "task_20240522_1020"
-    return task_id

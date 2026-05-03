@@ -3,6 +3,7 @@ const state = {
   selectedSessionId: "",
   selected: null,
   query: "",
+  toastTimer: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -141,7 +142,50 @@ async function submitComposer(event) {
     body: JSON.stringify({text}),
   });
   input.value = "";
+  showToast("已追加到当前 Codex 会话");
   await loadSession(state.selectedSessionId);
+}
+
+async function refreshCurrentSession() {
+  if (!state.selectedSessionId) {
+    await loadWorkspace();
+    showToast("已刷新工作区");
+    return;
+  }
+  await loadSession(state.selectedSessionId);
+  showToast("已刷新当前任务");
+}
+
+function openFirstArtifact() {
+  const artifact = state.selected?.artifacts?.find((item) => item.url);
+  if (!artifact) {
+    showToast("当前任务没有可打开的远端产物");
+    return;
+  }
+  window.open(artifact.url, "_blank", "noopener");
+}
+
+function focusArtifactList() {
+  const root = $("#centerArtifacts");
+  root.scrollIntoView({block: "center", behavior: "smooth"});
+  const firstLink = root.querySelector("a.artifact-card");
+  if (firstLink) firstLink.focus();
+}
+
+function toggleInspector() {
+  $(".detail-card").classList.toggle("collapsed");
+}
+
+function toggleSidebar() {
+  $("#app").classList.toggle("sidebar-collapsed");
+}
+
+function showToast(message) {
+  const toast = $("#toast");
+  toast.textContent = message;
+  toast.classList.add("visible");
+  clearTimeout(state.toastTimer);
+  state.toastTimer = setTimeout(() => toast.classList.remove("visible"), 1800);
 }
 
 function iconLetter(kind) {
@@ -204,6 +248,13 @@ $("#sessionSearch").addEventListener("input", (event) => {
   renderGroups();
 });
 $("#composer").addEventListener("submit", submitComposer);
+$(".collapse-btn").addEventListener("click", toggleSidebar);
+$("#sessionTitle").addEventListener("click", () => $("#sessionSearch").focus());
+$("#refreshSession").addEventListener("click", () => refreshCurrentSession().catch((error) => showToast(error.message)));
+$("#openArtifact").addEventListener("click", openFirstArtifact);
+$(".panel-title button").addEventListener("click", toggleInspector);
+$(".all-artifacts").addEventListener("click", focusArtifactList);
+$(".settings").addEventListener("click", () => showToast(`${state.workspace?.total_sessions || 0} 个真实会话`));
 
 loadWorkspace().catch((error) => {
   console.error(error);

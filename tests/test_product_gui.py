@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from bridge.product_gui import build_selected_session_view, build_workspace_view, create_product_gui_app
+from bridge.product_gui import STATIC_DIR, build_selected_session_view, build_workspace_view, create_product_gui_app
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -149,7 +149,7 @@ def test_selected_session_view_and_gui_append_endpoint(tmp_path: Path) -> None:
     assert selected["task_detail"]["task_id"] == "task-report"
     assert selected["user_request"].startswith("根据项目群聊整理第二周周报")
     assert selected["artifacts"][0]["title"] == "简报草稿"
-    assert selected["execution_steps"][0]["label"].startswith("读取项目群聊上下文")
+    assert selected["execution_steps"][0]["label"] == "读取会话上下文"
 
     app = create_product_gui_app(tasks_root)
     client = app.test_client()
@@ -168,3 +168,62 @@ def test_selected_session_view_and_gui_append_endpoint(tmp_path: Path) -> None:
         "session_id": "feishu:oc_project:session-report",
         "text": "补充团队分工，并把 PPT 改成 5 分钟答辩版",
     }
+
+
+def test_product_gui_does_not_invent_display_values(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_id = "im-om_x100b503120ac1084b27822219c1a334"
+    request_text = (
+        "生成 IM-Collab 项目真实全链路复盘文档、6 页演示稿和白板流程，"
+        "并把 Python delivery code 发布后的链接回传到群里。"
+    )
+    make_task(
+        tasks_root,
+        task_id,
+        "completed",
+        "Published to Feishu document, slides, and whiteboard via lark-cli.",
+        "2026-05-03T10:25:00+08:00",
+        [{"id": "document", "kind": "document", "path": "document.md"}],
+    )
+    (tasks_root / task_id / "request.md").write_text(
+        f"""# Request
+
+session_key: feishu:oc_real
+chat_id: oc_real
+sender_id: ou_demo
+
+## User Message
+{request_text}
+""",
+        encoding="utf-8",
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_real": {
+                "session_key": "feishu:oc_real",
+                "chat_id": "oc_real",
+                "active_task_id": None,
+                "last_task_id": task_id,
+            }
+        },
+    )
+
+    workspace = build_workspace_view(tasks_root)
+    selected = build_selected_session_view(tasks_root, "feishu:oc_real")
+
+    assert workspace["groups"][0]["group_name"] == "oc_real"
+    assert workspace["groups"][0]["sessions"][0]["title"].startswith("Published to Feishu document")
+    assert selected["task_detail"]["task_id"] == task_id
+    assert selected["user_request"] == request_text
+    assert selected["artifacts"][0]["title"] == "document"
+    assert selected["artifacts"][0]["format_hint"] == "md"
+
+
+def test_product_gui_hides_unsupported_static_controls() -> None:
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    assert "data-action=\"new\"" not in html
+    assert "disabled" not in html
+    assert "插件" not in html
+    assert "自动化" not in html

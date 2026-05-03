@@ -89,7 +89,7 @@ button { color: inherit; }
   letter-spacing: -0.01em;
 }
 
-.collapse-btn, .panel-title button, .window-actions button {
+.collapse-btn, .panel-title button, .top-actions button {
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -117,7 +117,6 @@ button { color: inherit; }
   text-align: left;
 }
 
-.utility-item:disabled { opacity: .7; }
 .icon { width: 20px; text-align: center; color: #4c5360; }
 
 .search-shell input {
@@ -249,20 +248,19 @@ button { color: inherit; }
   font-size: 16px;
 }
 
-.window-actions {
-  position: fixed;
-  top: 16px;
-  right: 20px;
-  z-index: 10;
-  display: grid;
-  grid-template-columns: repeat(5, 24px);
+.top-actions {
+  display: flex;
+  align-items: center;
   gap: 10px;
-  justify-content: end;
 }
 
-.window-actions button {
-  font-size: 20px;
-  line-height: 1;
+.top-actions button {
+  min-height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(255,255,255,.72);
+  padding: 0 12px;
+  font-size: 14px;
 }
 
 .conversation {
@@ -437,7 +435,7 @@ button { color: inherit; }
   border-radius: 11px;
   box-shadow: 0 8px 28px rgba(30, 41, 59, 0.035);
   display: grid;
-  grid-template-columns: 44px 44px minmax(0, 1fr) 60px;
+  grid-template-columns: minmax(0, 1fr) 60px;
   grid-template-rows: 1fr 48px;
   padding: 12px 14px;
 }
@@ -454,18 +452,8 @@ button { color: inherit; }
 
 .composer input::placeholder { color: #9aa1ad; }
 
-.composer-tool {
-  align-self: center;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  background: transparent;
-  color: #6b7280;
-  font-size: 22px;
-}
-
 .send-btn {
-  grid-column: 4;
+  grid-column: 2;
   justify-self: end;
   align-self: center;
   width: 46px;
@@ -586,6 +574,60 @@ button { color: inherit; }
   justify-content: space-between;
   color: #6f7580;
   font-size: 15px;
+}
+
+.detail-card.collapsed {
+  min-height: 0;
+}
+
+.detail-card.collapsed .meta-list,
+.detail-card.collapsed .divider,
+.detail-card.collapsed .artifact-head,
+.detail-card.collapsed .side-artifacts,
+.detail-card.collapsed .all-artifacts {
+  display: none;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%) translateY(18px);
+  opacity: 0;
+  pointer-events: none;
+  background: rgba(31, 35, 41, .92);
+  color: #fff;
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  transition: opacity .18s ease, transform .18s ease;
+  z-index: 20;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 78px minmax(0, 1fr) 376px;
+}
+
+.shell.sidebar-collapsed .sidebar {
+  padding-inline: 16px;
+}
+
+.shell.sidebar-collapsed .brand {
+  grid-template-columns: 36px;
+}
+
+.shell.sidebar-collapsed .brand-name,
+.shell.sidebar-collapsed .utility-item span:last-child,
+.shell.sidebar-collapsed .search-shell input,
+.shell.sidebar-collapsed .sidebar-section-title,
+.shell.sidebar-collapsed .group-list,
+.shell.sidebar-collapsed .settings span:last-child {
+  display: none;
 }
 
 @media (max-width: 1280px) {

@@ -16,10 +16,7 @@
       </div>
 
       <nav class="utility">
-        <button class="utility-item" type="button" data-action="new"><span class="icon">＋</span><span>新任务</span></button>
         <label class="utility-item search-shell"><span class="icon">⌕</span><input id="sessionSearch" type="search" placeholder="搜索"></label>
-        <button class="utility-item" type="button" disabled><span class="icon">⌘</span><span>插件</span></button>
-        <button class="utility-item" type="button" disabled><span class="icon">◷</span><span>自动化</span></button>
       </nav>
 
       <div class="sidebar-section-title">任务</div>
@@ -31,17 +28,14 @@
     <main class="workspace">
       <header class="topbar">
         <button id="sessionTitle" class="session-title" type="button">加载中</button>
-        <div class="window-actions" aria-label="窗口操作">
-          <button type="button" aria-label="最小化">−</button>
-          <button type="button" aria-label="最大化">□</button>
-          <button type="button" aria-label="关闭">×</button>
-          <button type="button" aria-label="运行">▷</button>
-          <button type="button" aria-label="打开">↗</button>
+        <div class="top-actions" aria-label="任务操作">
+          <button id="refreshSession" type="button">刷新</button>
+          <button id="openArtifact" type="button">打开产物</button>
         </div>
       </header>
 
       <section class="conversation">
-        <div id="userBubble" class="user-bubble">根据项目群聊整理第二周周报，并生成 PPT 大纲和回传消息。</div>
+        <div id="userBubble" class="user-bubble">正在加载当前会话...</div>
         <div class="agent-row">
           <div class="agent-avatar">A</div>
           <div class="agent-content">
@@ -56,8 +50,6 @@
 
       <form id="composer" class="composer">
         <input id="composerInput" name="text" autocomplete="off" placeholder="继续告诉 Agent：例如 “补充团队分工”、“生成 PPT 初稿”、“回传到飞书群”">
-        <button class="composer-tool" type="button" aria-label="附件">⌘</button>
-        <button class="composer-tool" type="button" aria-label="调节">☷</button>
         <button class="send-btn" type="submit" aria-label="发送">↗</button>
       </form>
       <p class="footnote">Agent Pilot 可能会出错，请结合实际情况判断。</p>
@@ -81,6 +73,7 @@
     </aside>
   </div>
 
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>
