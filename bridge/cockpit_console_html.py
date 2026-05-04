@@ -519,7 +519,20 @@ document.addEventListener("DOMContentLoaded", () => {{
     }}
     localStorage.setItem(storageKey, JSON.stringify(next));
   }};
-  for (const detail of details) detail.addEventListener("toggle", persist);
+ for (const detail of details) detail.addEventListener("toggle", persist);
+  for (const toggle of document.querySelectorAll(".session-rename-toggle")) {{
+    toggle.addEventListener("change", () => {{
+      if (!toggle.checked) return;
+      const row = toggle.closest(".group");
+      const input = row ? row.querySelector(".session-rename-inline input[name='session_title']") : null;
+      if (input) {{
+        setTimeout(() => {{
+          input.focus();
+          input.select();
+        }}, 0);
+      }}
+    }});
+  }}
 }});
 </script>
 </head>"""
@@ -546,11 +559,6 @@ def render_cockpit_document(
         items: list[str] = []
         for t in group:
             active = selected is not None and t.task_id == selected.task_id
-            bar = (
-                '<div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-l-full"></div>'
-                if active
-                else ""
-            )
             row_wrap_cls = (
                 "relative group flex items-center rounded-lg bg-tag-bg-blue text-primary"
                 if active
@@ -571,7 +579,7 @@ def render_cockpit_document(
             title_value = escape(session_title, quote=True)
             q_value = escape(search_query, quote=True)
             items.append(
-                f"""<div class="{row_wrap_cls}">{bar}
+                f"""<div class="{row_wrap_cls}">
 <input id="{rename_id}" class="session-rename-toggle hidden" type="checkbox">
 <a class="{link_cls}" href="{href}" data-task-id="{escape(t.task_id)}">
 <span class="material-symbols-outlined text-[18px] {'text-primary' if active else 'text-text-secondary'}">chat_bubble</span>
@@ -583,9 +591,7 @@ def render_cockpit_document(
 <input type="hidden" name="session_key" value="{session_key}">
 <input type="hidden" name="redirect_task" value="{tid}">
 <input type="hidden" name="q" value="{q_value}">
-<input name="session_title" value="{title_value}" required autofocus class="min-w-0 flex-1 rounded-md border border-primary bg-white px-2 py-1 text-[13px] text-text-primary">
-<button type="submit" class="rounded-md bg-primary px-2 py-1 text-[12px] font-medium text-white">保存</button>
-<label for="{rename_id}" class="rounded-md px-1.5 py-1 text-[12px] text-text-secondary hover:bg-white/80 cursor-pointer">取消</label>
+<input name="session_title" value="{title_value}" required autofocus onblur="this.form.requestSubmit()" class="min-w-0 flex-1 rounded-md border border-primary bg-white px-2 py-1 text-[13px] text-text-primary">
 </form>
 {session_menu}</div>"""
             )
@@ -593,8 +599,11 @@ def render_cockpit_document(
         group_key = escape(session_name, quote=True)
         sidebar_links.append(
             f"""<details class="session-group"{open_attr} data-session-group="{group_key}">
-<summary class="group flex items-center justify-between px-3 py-1.5 text-[12px] font-medium text-text-secondary cursor-pointer rounded-md hover:bg-surface-hover">
+<summary class="group flex items-center justify-between px-3 py-1.5 text-[14px] font-medium text-text-primary cursor-pointer rounded-md hover:bg-surface-hover">
+<span class="min-w-0 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-text-primary">groups</span>
 <span class="truncate">{escape(session_name)}</span>
+</span>
 <span class="material-symbols-outlined text-[16px] transition-transform group-open:rotate-180">expand_more</span>
 </summary>
 <div class="space-y-0.5 mt-1">{"".join(items)}</div>
@@ -754,7 +763,10 @@ def render_cockpit_document(
 <span>自动化</span>
 </a>
 </div>
-<div class="flex-1 overflow-y-auto px-3 space-y-5">{sidebar_body}</div>
+<div class="flex-1 overflow-y-auto px-3">
+<div class="px-3 pb-2 text-[12px] font-medium text-text-secondary">任务</div>
+<div class="space-y-5">{sidebar_body}</div>
+</div>
 <div class="px-3 pt-3 border-t border-border space-y-0.5 mt-auto">
 <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-primary hover:bg-surface-hover transition-colors duration-150 cursor-pointer ml-1 no-underline text-inherit" href="#" title="打开仓库根目录 README.md">
 <span class="material-symbols-outlined text-[18px] text-text-secondary">help</span>
