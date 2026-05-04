@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,3 +25,26 @@ def test_task_console_web_script_prints_startup_url() -> None:
     )
 
     assert completed.stdout.startswith("http://127.0.0.1:")
+
+
+def test_task_console_web_script_default_port_from_env() -> None:
+    repo = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["IM_COLLAB_CONSOLE_PORT"] = "19999"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(repo / "scripts" / "task_console_web.py"),
+            "--host",
+            "127.0.0.1",
+            "--print-url",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+
+    first_line = completed.stdout.strip().splitlines()[0]
+    assert first_line == "http://127.0.0.1:19999"

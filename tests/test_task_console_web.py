@@ -44,6 +44,7 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
     assert "Agent-Pilot 办公助手" in html
     assert "task-1" in html
     assert "running" in html
+    assert "tailwindcss.com" in html
     assert "thread_123" in html
     assert "turn_456" in html
     assert "最新操作" in html
