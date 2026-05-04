@@ -192,7 +192,7 @@ def _build_inspector_primary_rows_html(t: TaskSummary) -> str:
         f"{escape(t.task_id)}</span>"
     )
     rows: list[tuple[str, str]] = [
-        ("状态", _inspector_status_value_html(t)),
+        ("状态", _inspector_status_value_html(t) if _task_display_state(t) == t.state else '<span class="px-2 py-0.5 rounded bg-[#FFF0E6] text-warning text-[12px] font-medium">待回复</span>'),
         ("来源", escape(t.session_key or "—")),
         ("创建于", escape(_short_created_display(t.created_at))),
         ("任务 ID", tid_mono),
@@ -374,11 +374,11 @@ def _task_request_message(t: TaskSummary) -> str:
     return "\n".join(lines[:8]).strip()
 
 
-def _append_instruction_texts(t: TaskSummary, limit: int = 5) -> list[str]:
+def _append_instruction_items(t: TaskSummary, limit: int = 8) -> list[dict[str, str]]:
     path = t.path / "control.jsonl"
     if not path.is_file():
         return []
-    texts: list[str] = []
+    items: list[dict[str, str]] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         if not raw.strip():
             continue
@@ -393,31 +393,96 @@ def _append_instruction_texts(t: TaskSummary, limit: int = 5) -> list[str]:
             continue
         text = str(payload.get("text") or "").strip()
         if text:
-            texts.append(text)
-    return texts[-limit:]
+            items.append({"text": text, "timestamp": str(command.get("timestamp") or "")})
+    return items[-limit:]
 
 
-def _user_message_bubble_html(text: str) -> str:
-    return f"""<div class="flex justify-end w-full max-w-4xl mx-auto">
+def _pending_append_instruction_items(t: TaskSummary) -> list[dict[str, str]]:
+    status_time = _parse_iso_datetime(t.updated_at)
+    pending: list[dict[str, str]] = []
+    for item in _append_instruction_items(t):
+        item_time = _parse_iso_datetime(item.get("timestamp", ""))
+        if t.state == "completed" and (item_time is None or status_time is None or item_time > status_time):
+            pending.append(item)
+    return pending
+
+
+def _task_display_state(t: TaskSummary) -> str:
+    if _pending_append_instruction_items(t):
+        return "pending_reply"
+    return t.state
+
+
+def _display_state_label(state: str) -> str:
+    if state == "pending_reply":
+        return "待回复"
+    return _state_label(state)
+
+
+def _display_state_badge_html(t: TaskSummary) -> str:
+    state = _task_display_state(t)
+    if state == "pending_reply":
+        return '<span class="px-2 py-0.5 rounded text-[12px] font-medium bg-[#FFF0E6] text-warning">待回复</span>'
+    return f'<span class="px-2 py-0.5 rounded text-[12px] font-medium bg-tag-bg-gray text-text-secondary">{escape(_state_label_en(t.state))}</span>'
+
+
+def _user_chat_bubble_html(text: str) -> str:
+    return f"""<div data-role="chat-message-user" class="flex justify-end w-full max-w-4xl mx-auto">
 <div class="bg-primary text-white rounded-xl rounded-tr-sm px-4 py-3 max-w-[75%] shadow-sm">
 <p class="text-[14px] leading-relaxed whitespace-pre-wrap">{escape(text)}</p>
 </div>
 </div>"""
 
 
-def _user_bubbles_html(t: TaskSummary) -> str:
-    messages: list[str] = []
+def _assistant_chat_bubble_html(text: str, checklist: str, artifact_cards: str, err: str) -> str:
+    return f"""<div data-role="chat-message-assistant" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
+<div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
+</div>
+<div class="space-y-3 w-full max-w-[85%]">
+<div class="bg-white border border-border rounded-xl rounded-tl-sm p-4 shadow-sm">
+<p class="text-[14px] text-text-primary mb-3 whitespace-pre-wrap">{escape(text)}</p>
+<div class="space-y-2">{checklist}</div>
+</div>
+<div class="grid grid-cols-2 gap-3">{artifact_cards}</div>
+{err}
+</div>
+</div>"""
+
+
+def _pending_reply_marker_html() -> str:
+    return """<div data-role="pending-reply-marker" class="w-full max-w-4xl mx-auto flex justify-end">
+<span class="text-[12px] text-text-secondary bg-tag-bg-gray rounded-full px-3 py-1">待回复</span>
+</div>"""
+
+
+def _chat_transcript_html(t: TaskSummary, checklist: str, artifact_cards: str, err: str) -> str:
+    messages: list[tuple[datetime, int, str]] = []
     request = _task_request_message(t)
     if request:
-        messages.append(request)
-    messages.extend(_append_instruction_texts(t))
-    if not messages:
-        messages.append(t.summary or "根据群聊与指令生成办公交付物。")
-    return "".join(_user_message_bubble_html(message) for message in messages)
+        created = _parse_iso_datetime(t.created_at) or datetime.min.replace(tzinfo=UTC)
+        messages.append((created, 0, _user_chat_bubble_html(request)))
+    if t.summary or t.state == "completed":
+        completed = _parse_iso_datetime(t.updated_at) or datetime.max.replace(tzinfo=UTC)
+        text = t.summary or _workspace_status_message(t)
+        messages.append((completed, 1, _assistant_chat_bubble_html(text, checklist, artifact_cards, err)))
+    for item in _append_instruction_items(t):
+        ts = _parse_iso_datetime(item.get("timestamp", "")) or datetime.max.replace(tzinfo=UTC)
+        messages.append((ts, 2, _user_chat_bubble_html(item["text"])))
+    messages.sort(key=lambda item: (item[0], item[1]))
+    rendered = "".join(item[2] for item in messages)
+    if _pending_append_instruction_items(t):
+        rendered += _pending_reply_marker_html()
+    if not rendered:
+        rendered = _user_chat_bubble_html(t.summary or "根据群聊与指令生成办公交付物。")
+    return rendered
 
 
-def _assistant_status_message(t: TaskSummary) -> str:
+def _workspace_status_message(t: TaskSummary) -> str:
     artifact_count = len(t.artifact_outputs)
+    pending_count = len(_pending_append_instruction_items(t))
+    if pending_count:
+        return f"已记录 {pending_count} 条后续补充。当前工件尚未根据这些补充更新。"
     if t.state == "completed":
         if artifact_count:
             return f"已完成当前任务，生成 {artifact_count} 个工件。"
@@ -441,42 +506,51 @@ def _append_form(task_id: str) -> str:
 <input type="file" class="hidden" disabled tabindex="-1"/>
 <span class="material-symbols-outlined text-[20px]">attach_file</span>
 </label>
-<textarea name="text" required rows="1" placeholder="添加指令..." class="w-full bg-transparent border-none resize-none focus:ring-0 text-[14px] py-2 px-2 max-h-32 placeholder-text-secondary text-text-primary outline-none"></textarea>
+<textarea name="text" required rows="1" data-submit-on-enter="true" placeholder="添加指令..." class="w-full bg-transparent border-none resize-none focus:ring-0 text-[14px] py-2 px-2 max-h-32 placeholder-text-secondary text-text-primary outline-none"></textarea>
 <button type="submit" class="w-9 h-9 rounded-lg bg-primary text-white hover:bg-primary-hover flex items-center justify-center transition-colors shrink-0 mb-0.5 mr-0.5" title="发送">
 <span class="material-symbols-outlined text-[18px]">send</span>
 </button>
 </form>"""
 
 
-def _ops_form(task_id: str) -> str:
+def _retry_form(task_id: str, label: str) -> str:
     tid = escape(task_id)
-    return f"""<div class="space-y-3 pt-2 border-t border-border">
-<form method="post" class="flex flex-wrap gap-2 items-center">
+    return f"""<form method="post">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="redirect_task" value="{tid}">
-<button type="submit" name="action" value="interrupt" class="px-3 py-2 rounded-lg bg-[#FFECE8] text-error text-[13px] font-medium hover:opacity-90">打断</button>
-</form>
+<input type="hidden" name="generator" value="app-server">
+<button type="submit" name="action" value="retry" class="w-full px-3 py-2 rounded-lg bg-primary text-white text-[13px] font-medium hover:bg-primary-hover">{escape(label)}</button>
+</form>"""
+
+
+def _ops_form(t: TaskSummary) -> str:
+    tid = escape(t.task_id)
+    display_state = _task_display_state(t)
+    if display_state == "pending_reply":
+        return f"""<div class="space-y-3 pt-2 border-t border-border">
+{_retry_form(t.task_id, "执行补充")}
+</div>"""
+    if t.state in {"completed", "failed"}:
+        return f"""<div class="space-y-3 pt-2 border-t border-border">
+{_retry_form(t.task_id, "重新执行")}
+</div>"""
+    if t.state == "waiting_for_user":
+        return f"""<div class="space-y-3 pt-2 border-t border-border">
 <form method="post" class="flex flex-wrap gap-2 items-end">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="redirect_task" value="{tid}">
 <input name="note" placeholder="确认备注" class="flex-1 min-w-[120px] bg-white border border-border rounded-lg px-3 py-2 text-[13px]"/>
 <button type="submit" name="action" value="ack" class="px-3 py-2 rounded-lg border border-border bg-white text-text-primary text-[13px] font-medium hover:bg-surface-hover">确认</button>
 </form>
-<form method="post" class="flex flex-col gap-2">
+{_retry_form(t.task_id, "重新执行")}
+</div>"""
+    return f"""<div class="space-y-3 pt-2 border-t border-border">
+<form method="post" class="flex flex-wrap gap-2 items-center">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="redirect_task" value="{tid}">
-<div class="flex flex-wrap gap-2 items-center">
-<select name="generator" class="bg-white border border-border rounded-lg px-2 py-2 text-[13px]">
-<option value="local">local</option>
-<option value="app-server">app-server</option>
-<option value="codex">codex</option>
-</select>
-<label class="flex items-center gap-1 text-[13px] text-text-secondary cursor-pointer">
-<input type="checkbox" name="publish" value="1" class="rounded border-border"/>发布到飞书
-</label>
-</div>
-<button type="submit" name="action" value="retry" class="w-full px-3 py-2 rounded-lg bg-primary text-white text-[13px] font-medium hover:bg-primary-hover">重试任务</button>
+<button type="submit" name="action" value="interrupt" class="px-3 py-2 rounded-lg bg-[#FFECE8] text-error text-[13px] font-medium hover:opacity-90">打断</button>
 </form>
+{_retry_form(t.task_id, "重新执行")}
 </div>"""
 
 
@@ -657,6 +731,14 @@ document.addEventListener("DOMContentLoaded", () => {{
       }}
     }});
   }}
+  for (const textarea of document.querySelectorAll("textarea[data-submit-on-enter='true']")) {{
+    textarea.addEventListener("keydown", (event) => {{
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      const form = textarea.closest("form");
+      if (form) form.requestSubmit();
+    }});
+  }}
 }});
 </script>
 </head>"""
@@ -782,10 +864,8 @@ def render_cockpit_document(
         inspector_column = aside_placeholder
     else:
         t = selected
-        badge = f'<span class="px-2 py-0.5 rounded text-[12px] font-medium bg-tag-bg-gray text-text-secondary">{escape(_state_label_en(t.state))}</span>'
+        badge = _display_state_badge_html(t)
         header_title = _cockpit_header_title(t)
-        user_bubbles = _user_bubbles_html(t)
-        assistant_message = escape(_assistant_status_message(t))
 
         checklist = "".join(
             [
@@ -802,6 +882,7 @@ def render_cockpit_document(
             "",
         )
         err = f'<p class="text-[13px] text-error mt-2">{escape(t.error)}</p>' if t.error else ""
+        chat_transcript = _chat_transcript_html(t, checklist, artifact_cards, err)
 
         rows_html = _build_inspector_primary_rows_html(t)
 
@@ -831,20 +912,7 @@ def render_cockpit_document(
 {_main_header_tools(t.task_id)}
 </header>
 <div class="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
-{user_bubbles}
-<div class="flex justify-start w-full max-w-4xl mx-auto gap-3">
-<div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
-<span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
-</div>
-<div class="space-y-3 w-full max-w-[85%]">
-<div class="bg-white border border-border rounded-xl rounded-tl-sm p-4 shadow-sm">
-<p class="text-[14px] text-text-primary mb-3">{assistant_message}</p>
-<div class="space-y-2">{checklist}</div>
-</div>
-<div class="grid grid-cols-2 gap-3">{artifact_cards}</div>
-{err}
-</div>
-</div>
+{chat_transcript}
 </div>
 <div class="absolute bottom-0 left-0 right-0 bg-background pt-4 pb-6 px-6 z-20">
 {_append_form(t.task_id)}
@@ -853,7 +921,7 @@ def render_cockpit_document(
         inspector_column = _right_inspector_drawer(
             rows_html,
             artifact_list,
-            _ops_form(t.task_id),
+            _ops_form(t),
             t,
             events,
         )

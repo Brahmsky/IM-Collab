@@ -52,7 +52,6 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
     assert "card_action" in html
     assert 'name="action" value="append"' in html
     assert 'name="action" value="interrupt"' in html
-    assert 'name="action" value="ack"' in html
     assert 'name="action" value="retry"' in html
 
 
@@ -79,6 +78,7 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     (tasks_root / "task-1" / "control.jsonl").write_text(
         json.dumps(
             {
+                "timestamp": "2026-04-29T01:00:00+00:00",
                 "type": "append_instruction",
                 "operator": "operator",
                 "payload": {
@@ -141,10 +141,25 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "session-time" in html
     assert "group-hover:hidden group-focus-within:hidden" in html
     assert '<h2 class="text-[16px] font-semibold text-text-primary truncate">第二阶段汇报材料</h2>' in html
+    assert 'data-role="chat-message-user"' in html
+    assert 'data-role="chat-message-assistant"' in html
+    assert 'data-role="pending-reply-marker"' in html
     assert "请根据项目群整理第二阶段材料，并生成 PPT 大纲。" in html
     assert "补充团队分工说明。" in html
-    assert "已完成当前任务" in html
+    assert "待回复" in html
+    assert "已完成当前任务" not in html
+    assert html.index("请根据项目群整理第二阶段材料，并生成 PPT 大纲。") < html.index("补充团队分工说明。")
+    assert "smart_toy" in html
     assert "收到，正在为你梳理并生成相关材料" not in html
+    assert '<select name="generator"' not in html
+    assert "发布到飞书" not in html
+    assert ">local</option>" not in html
+    assert "打断" not in html
+    assert "确认备注" not in html
+    assert "执行补充" in html
+    assert 'data-submit-on-enter="true"' in html
+    assert "requestSubmit()" in html
+    assert "event.shiftKey" in html
     assert "edit" in html
     assert "delete" in html
     assert "保存</button>" not in html

@@ -232,7 +232,7 @@ Run: `rtk .venv/bin/python -m pytest tests/test_task_console_web.py -q`
 - Modify: `docs/superpowers/plans/2026-05-04-cockpit-real-backend-semantics.md`
 - Modify: code/test files changed above
 
-- [ ] **Step 1: Run full verification**
+- [x] **Step 1: Run full verification**
 
 ```bash
 rtk .venv/bin/python -m pytest -q
@@ -240,13 +240,13 @@ rtk .venv/bin/python -m py_compile bridge/*.py scripts/*.py
 rtk git diff --check
 ```
 
-- [ ] **Step 2: Restart cockpit service**
+- [x] **Step 2: Restart cockpit service**
 
 ```bash
 rtk bash -lc 'old=$(cat logs/services/task_console_web.pid 2>/dev/null || true); if [ -n "$old" ]; then kill "$old" 2>/dev/null || true; fi; setsid .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --port 8765 --ensure-demo --ipv4-only > logs/services/task_console_web.log 2>&1 < /dev/null & echo $! > logs/services/task_console_web.pid'
 ```
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 ```bash
 rtk git add bridge/cockpit_console_html.py bridge/task_console_web.py tests/test_task_console_web.py docs/2026-05-04-frontend-mock-audit.md docs/superpowers/plans/2026-05-04-cockpit-real-backend-semantics.md
@@ -254,8 +254,84 @@ rtk git commit -m "fix: connect cockpit conversation to task protocol"
 rtk git push origin main
 ```
 
+### Task 10: Restore Turn-Based Chat Window Semantics
+
+**Files:**
+- Modify: `bridge/cockpit_console_html.py`
+- Test: `tests/test_task_console_web.py`
+- Update: `docs/2026-05-04-frontend-mock-audit.md`
+
+- [x] **Step 1: Write failing tests**
+
+Assert the central workspace contains real chat roles:
+
+```html
+data-role="chat-message-user"
+data-role="chat-message-assistant"
+data-role="pending-reply-marker"
+```
+
+Assert request text appears before follow-up text, and completed follow-ups produce a waiting state:
+
+```python
+assert html.index("请根据项目群整理第二阶段材料") < html.index("补充团队分工说明")
+assert "待回复" in html
+```
+
+- [x] **Step 2: Implement task-backed chat turns**
+
+Render:
+
+- user bubble from `request.md -> ## User Message`.
+- assistant bubble from completed task protocol output.
+- user bubbles from `control.jsonl append_instruction`.
+- neutral `待回复` marker when follow-up commands are newer than `status.updated_at`.
+
+- [x] **Step 3: Hide default execution-backend controls**
+
+Remove visible `generator` select, `local`, and `发布到飞书` from the right inspector. Keep retry as a simple `重新执行` form with hidden `generator=app-server`.
+
+- [x] **Step 4: Verify**
+
+Run: `rtk .venv/bin/python -m pytest tests/test_task_console_web.py -q`
+
+Expected: PASS.
+
+### Task 11: Complete Basic Chat Interactions
+
+**Files:**
+- Modify: `bridge/cockpit_console_html.py`
+- Test: `tests/test_task_console_web.py`
+
+- [x] **Step 1: Write failing tests**
+
+Assert:
+
+```python
+assert 'data-submit-on-enter="true"' in html
+assert "requestSubmit()" in html
+assert "event.shiftKey" in html
+assert "打断" not in html
+assert "确认备注" not in html
+assert "执行补充" in html
+```
+
+- [x] **Step 2: Implement**
+
+Add browser behavior:
+
+- Enter submits the bottom append form.
+- Shift+Enter keeps multiline input.
+- Completed tasks with pending follow-ups show `执行补充`, not running-only `打断` or waiting-only `确认备注`.
+
+- [x] **Step 3: Verify**
+
+Run: `rtk .venv/bin/python -m pytest tests/test_task_console_web.py -q`
+
+Expected: PASS.
+
 ## Self-Review
 
-- Spec coverage: central conversation, flash behavior, append provenance, top title rename, and full mock audit are covered. Search, fake controls, and product copy remain explicit next tasks.
+- Spec coverage: central conversation, flash behavior, append provenance, top title rename, Enter-to-send, state-scoped controls, and full mock audit are covered. Search, fake controls, and product copy remain explicit next tasks.
 - Placeholder scan: no `TBD` or vague implementation placeholders; incomplete tasks include exact tests and code targets.
 - Type consistency: functions use existing `TaskSummary`, `Path`, `control.jsonl`, and `request.md` concepts already present in the codebase.
