@@ -14,7 +14,7 @@
 | 3 | `3e0a850` | Web 路径、双栈、`--ensure-demo` | 同上 | — |
 | 4 | `cc95747` | README 控制台说明等 | 同上 | — |
 | 5 | `9797736` | cockpit 与 GUI 对齐 + 进展文档大包 | 同上 | — |
-| 6（可选） | `d1560aa` | 本协助清单 `docs/assist-merge-GUI-2.0-into-main.md` | 在 PR#5 合并后 cherry-pick | — |
+| 6（可选） | `d1560aa`…`a528ca6` | 本协助清单及 SHA 勘误小提交 | 在 PR#5 合并后 **按序** cherry-pick | — |
 
 在本地执行下面命令可再次确认顺序（从新到旧显示，**cherry-pick 时要从旧到新**）：
 
@@ -151,11 +151,11 @@ git pull origin main
 
 git branch -D into-main/06-assist-merge-doc 2>/dev/null || true
 git checkout -b into-main/06-assist-merge-doc main
-git cherry-pick d1560aa
+git cherry-pick d1560aa a528ca6
 git push -u origin into-main/06-assist-merge-doc
 ```
 
-> 若 `d1560aa` 与当前 `GUI-2.0` 不一致，请用 `git log -1 --oneline GUI-2.0 -- docs/assist-merge-GUI-2.0-into-main.md` 取最新 SHA 替换。
+> 若提交已变，请用 `git log --oneline GUI-2.0 -- docs/assist-merge-GUI-2.0-into-main.md` 查看应对 cherry-pick 的 SHA。
 
 ---
 
