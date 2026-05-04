@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from urllib.parse import quote
@@ -107,6 +108,39 @@ def _short_created_display(iso: str) -> str:
     if s.endswith("Z"):
         s = s[:-1].strip()
     return s[:16] if len(s) >= 16 else s
+
+
+def _parse_iso_datetime(iso: str) -> datetime | None:
+    raw = (iso or "").strip()
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def _relative_time_display(iso: str, *, now_iso: str | None = None) -> str:
+    then = _parse_iso_datetime(iso)
+    if then is None:
+        return ""
+    now = _parse_iso_datetime(now_iso) if now_iso else datetime.now(UTC)
+    if now is None:
+        now = datetime.now(UTC)
+    seconds = max(0, int((now - then).total_seconds()))
+    if seconds < 60:
+        return "刚刚"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} 分钟前"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} 小时前"
+    days = hours // 24
+    return f"{days} 天前"
 
 
 def _cockpit_header_title(t: TaskSummary) -> str:
@@ -214,7 +248,7 @@ def _session_menu_html(t: TaskSummary, search_query: str) -> str:
     tid = escape(t.task_id)
     session_key = escape(t.session_key or "")
     q = escape(search_query, quote=True)
-    return f"""<details class="relative session-actions opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+    return f"""<details class="relative session-actions hidden group-hover:block focus-within:block shrink-0">
 <summary class="list-none w-7 h-7 rounded-md hover:bg-white/80 flex items-center justify-center cursor-pointer text-text-secondary" aria-label="会话操作" title="会话操作">
 <span class="material-symbols-outlined text-[18px]">more_vert</span>
 </summary>
@@ -565,9 +599,9 @@ def render_cockpit_document(
                 else "relative group flex items-center rounded-lg text-text-primary hover:bg-surface-hover transition-colors"
             )
             link_cls = (
-                "session-link flex items-center gap-3 px-3 py-2 text-primary cursor-pointer min-w-0 flex-1 no-underline"
+                "session-link flex items-center gap-2 px-3 py-2 text-primary cursor-pointer min-w-0 flex-1 no-underline"
                 if active
-                else "session-link flex items-center gap-3 px-3 py-2 text-text-primary cursor-pointer min-w-0 flex-1 no-underline"
+                else "session-link flex items-center gap-2 px-3 py-2 text-text-primary cursor-pointer min-w-0 flex-1 no-underline"
             )
             q_suffix = f"&q={quote(search_query)}" if search_query.strip() else ""
             href = f"/?task={quote(t.task_id, safe='')}{q_suffix}"
@@ -578,11 +612,22 @@ def render_cockpit_document(
             session_key = escape(t.session_key or "")
             title_value = escape(session_title, quote=True)
             q_value = escape(search_query, quote=True)
+            relative_time = _relative_time_display(t.updated_at or t.created_at)
+            status_indicator = (
+                '<span class="session-active-dot w-2 h-2 rounded-full bg-primary shrink-0 mr-2 '
+                'group-hover:hidden group-focus-within:hidden" aria-label="当前会话"></span>'
+                if active
+                else (
+                    f'<span class="session-time shrink-0 mr-2 text-[12px] text-text-secondary tabular-nums '
+                    f'group-hover:hidden group-focus-within:hidden">{escape(relative_time)}</span>'
+                    if relative_time
+                    else ""
+                )
+            )
             items.append(
                 f"""<div class="{row_wrap_cls}">
 <input id="{rename_id}" class="session-rename-toggle hidden" type="checkbox">
 <a class="{link_cls}" href="{href}" data-task-id="{escape(t.task_id)}">
-<span class="material-symbols-outlined text-[18px] {'text-primary' if active else 'text-text-secondary'}">chat_bubble</span>
 <span class="truncate {'font-medium' if active else ''}">{escape(session_title)}</span>
 </a>
 <form method="post" class="session-rename-inline hidden items-center gap-1 min-w-0 flex-1 px-2 py-1.5">
@@ -593,6 +638,7 @@ def render_cockpit_document(
 <input type="hidden" name="q" value="{q_value}">
 <input name="session_title" value="{title_value}" required autofocus onblur="this.form.requestSubmit()" class="min-w-0 flex-1 rounded-md border border-primary bg-white px-2 py-1 text-[13px] text-text-primary">
 </form>
+{status_indicator}
 {session_menu}</div>"""
             )
         open_attr = " open" if group_open else ""
@@ -601,12 +647,12 @@ def render_cockpit_document(
             f"""<details class="session-group"{open_attr} data-session-group="{group_key}">
 <summary class="group flex items-center justify-between px-3 py-1.5 text-[14px] font-medium text-text-primary cursor-pointer rounded-md hover:bg-surface-hover">
 <span class="min-w-0 flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px] text-text-primary">groups</span>
+<span class="material-symbols-outlined text-[20px] text-text-primary">group</span>
 <span class="truncate">{escape(session_name)}</span>
 </span>
 <span class="material-symbols-outlined text-[16px] transition-transform group-open:rotate-180">expand_more</span>
 </summary>
-<div class="space-y-0.5 mt-1">{"".join(items)}</div>
+<div class="ml-[22px] mt-1 border-l border-border pl-4 space-y-0.5">{"".join(items)}</div>
 </details>"""
         )
 

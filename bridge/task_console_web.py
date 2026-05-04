@@ -69,7 +69,7 @@ def handle_console_action(
     if action == "rename_session":
         title = _required(form, "session_title")
         _rename_session(tasks_root / "task-bindings.json", form.get("session_key", ""), task_id, title)
-        return f"已重命名会话 {title}"
+        return ""
 
     if action == "delete_session":
         _delete_session(tasks_root, task_id, form.get("session_key", ""))

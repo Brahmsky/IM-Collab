@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from bridge.cockpit_console_html import _relative_time_display
 from bridge.task_console_web import handle_console_action, render_console_html
 
 
@@ -68,6 +69,16 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
         },
     )
     write_json(
+        tasks_root / "task-2" / "status.json",
+        {
+            "task_id": "task-2",
+            "state": "completed",
+            "created_at": "2026-04-27T01:00:00+00:00",
+            "updated_at": "2026-04-27T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
         tasks_root / "task-bindings.json",
         {
             "feishu:oc_group": {
@@ -76,6 +87,13 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
                 "chat_name": "项目群",
                 "session_title": "第二阶段汇报材料",
                 "last_task_id": "task-1",
+            },
+            "feishu:oc_group:review": {
+                "session_key": "feishu:oc_group:review",
+                "chat_id": "oc_group",
+                "chat_name": "项目群",
+                "session_title": "产品方案评审准备",
+                "last_task_id": "task-2",
             }
         },
     )
@@ -94,7 +112,10 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert 'data-session-group="项目群"' in html
     assert "im-collab-cockpit-open-groups" in html
     assert ">任务</div>" in html
-    assert "groups" in html
+    assert ">group</span>" in html
+    assert "border-l border-border" in html
+    assert "session-time" in html
+    assert "group-hover:hidden group-focus-within:hidden" in html
     assert "edit" in html
     assert "delete" in html
     assert "保存</button>" not in html
@@ -180,7 +201,7 @@ def test_handle_console_action_renames_and_archives_session(tmp_path: Path) -> N
             "session_key": "feishu:oc_group",
             "session_title": "预算材料整理",
         },
-    ) == "已重命名会话 预算材料整理"
+    ) == ""
 
     bindings = json.loads((tasks_root / "task-bindings.json").read_text(encoding="utf-8"))
     assert bindings["feishu:oc_group"]["session_title"] == "预算材料整理"
@@ -213,7 +234,14 @@ def test_handle_console_action_renames_unbound_task_by_creating_local_session(tm
         {"action": "rename_session", "task_id": "task-1", "session_title": "本地整理任务"},
     )
 
-    assert message == "已重命名会话 本地整理任务"
+    assert message == ""
     bindings = json.loads((tasks_root / "task-bindings.json").read_text(encoding="utf-8"))
     assert bindings["local:task-1"]["last_task_id"] == "task-1"
     assert bindings["local:task-1"]["session_title"] == "本地整理任务"
+
+
+def test_relative_time_display_has_only_four_user_facing_buckets() -> None:
+    assert _relative_time_display("2026-05-04T11:59:40+08:00", now_iso="2026-05-04T12:00:00+08:00") == "刚刚"
+    assert _relative_time_display("2026-05-04T11:30:00+08:00", now_iso="2026-05-04T12:00:00+08:00") == "30 分钟前"
+    assert _relative_time_display("2026-05-04T09:00:00+08:00", now_iso="2026-05-04T12:00:00+08:00") == "3 小时前"
+    assert _relative_time_display("2026-05-01T12:00:00+08:00", now_iso="2026-05-04T12:00:00+08:00") == "3 天前"
