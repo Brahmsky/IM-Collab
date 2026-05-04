@@ -158,6 +158,14 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "确认备注" not in html
     assert "执行补充" in html
     assert 'data-submit-on-enter="true"' in html
+    assert 'data-async-append="true"' in html
+    assert 'data-chat-scroll-container="true"' in html
+    assert "fetch(form.action || window.location.href" in html
+    assert "event.preventDefault()" in html
+    assert "insertAdjacentHTML(\"beforeend\"" in html
+    assert "chat.scrollTop = chat.scrollHeight" in html
+    assert "new EventSource" in html
+    assert "/api/task-stream?task=" in html
     assert "requestSubmit()" in html
     assert "event.shiftKey" in html
     assert "edit" in html

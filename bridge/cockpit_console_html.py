@@ -434,6 +434,10 @@ def _user_chat_bubble_html(text: str) -> str:
 </div>"""
 
 
+def render_user_chat_message_fragment(text: str) -> str:
+    return _user_chat_bubble_html(text)
+
+
 def _assistant_chat_bubble_html(text: str, checklist: str, artifact_cards: str, err: str) -> str:
     return f"""<div data-role="chat-message-assistant" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
 <div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
@@ -454,6 +458,10 @@ def _pending_reply_marker_html() -> str:
     return """<div data-role="pending-reply-marker" class="w-full max-w-4xl mx-auto flex justify-end">
 <span class="text-[12px] text-text-secondary bg-tag-bg-gray rounded-full px-3 py-1">待回复</span>
 </div>"""
+
+
+def render_pending_reply_marker_fragment() -> str:
+    return _pending_reply_marker_html()
 
 
 def _chat_transcript_html(t: TaskSummary, checklist: str, artifact_cards: str, err: str) -> str:
@@ -478,6 +486,24 @@ def _chat_transcript_html(t: TaskSummary, checklist: str, artifact_cards: str, e
     return rendered
 
 
+def render_task_chat_fragment(t: TaskSummary) -> str:
+    checklist = "".join(
+        [
+            _step_row(t, "context", "读取 IM / 群聊上下文"),
+            _step_row(t, "brief", "生成群聊 brief"),
+            _step_row(t, "execution", "Codex 执行任务"),
+            _step_row(t, "artifacts", "生成交付产物"),
+            _step_row(t, "delivery", "汇总与回传"),
+        ]
+    )
+    artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in t.artifact_outputs) or _artifact_card_main(
+        "交付产物",
+        "",
+    )
+    err = f'<p class="text-[13px] text-error mt-2">{escape(t.error)}</p>' if t.error else ""
+    return _chat_transcript_html(t, checklist, artifact_cards, err)
+
+
 def _workspace_status_message(t: TaskSummary) -> str:
     artifact_count = len(t.artifact_outputs)
     pending_count = len(_pending_append_instruction_items(t))
@@ -498,7 +524,8 @@ def _workspace_status_message(t: TaskSummary) -> str:
 
 def _append_form(task_id: str) -> str:
     tid = escape(task_id)
-    return f"""<form method="post" class="max-w-4xl mx-auto bg-white border border-border rounded-xl shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all flex items-end p-2 gap-2">
+    stream_url = escape(f"/api/task-stream?task={quote(task_id, safe='')}", quote=True)
+    return f"""<form method="post" data-async-append="true" data-stream-url="{stream_url}" class="max-w-4xl mx-auto bg-white border border-border rounded-xl shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all flex items-end p-2 gap-2">
 <input type="hidden" name="action" value="append">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="redirect_task" value="{tid}">
@@ -700,6 +727,11 @@ tailwind.config = {{
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {{
+  const scrollChatToBottom = () => {{
+    const chat = document.querySelector("[data-chat-scroll-container='true']");
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  }};
+  scrollChatToBottom();
   const storageKey = "im-collab-cockpit-open-groups";
   let saved = null;
   try {{ saved = JSON.parse(localStorage.getItem(storageKey) || "null"); }} catch (_err) {{ saved = null; }}
@@ -737,6 +769,59 @@ document.addEventListener("DOMContentLoaded", () => {{
       event.preventDefault();
       const form = textarea.closest("form");
       if (form) form.requestSubmit();
+    }});
+  }}
+  let taskStream = null;
+  const openTaskStream = (url) => {{
+    if (!url || typeof EventSource === "undefined") return;
+    if (taskStream) taskStream.close();
+    taskStream = new EventSource(url);
+    taskStream.onmessage = (event) => {{
+      const data = JSON.parse(event.data);
+      const chat = document.querySelector("[data-chat-scroll-container='true']");
+      if (chat && data.chat_html) {{
+        chat.innerHTML = data.chat_html;
+        scrollChatToBottom();
+      }}
+      if (data.done && taskStream) {{
+        taskStream.close();
+        taskStream = null;
+      }}
+    }};
+    taskStream.onerror = () => {{
+      if (taskStream) taskStream.close();
+      taskStream = null;
+    }};
+  }};
+  for (const form of document.querySelectorAll("form[data-async-append='true']")) {{
+    form.addEventListener("submit", async (event) => {{
+      event.preventDefault();
+      const textarea = form.querySelector("textarea[name='text']");
+      const text = textarea ? textarea.value.trim() : "";
+      if (!text) return;
+      const button = form.querySelector("button[type='submit']");
+      if (button) button.disabled = true;
+      try {{
+        const response = await fetch(form.action || window.location.href, {{
+          method: "POST",
+          headers: {{"Accept": "application/json"}},
+          body: new URLSearchParams(new FormData(form)),
+        }});
+        const data = await response.json();
+        if (!response.ok || !data.ok) throw new Error(data.error || "send failed");
+        const chat = document.querySelector("[data-chat-scroll-container='true']");
+        if (chat) {{
+          for (const node of chat.querySelectorAll("[data-role='pending-reply-marker']")) node.remove();
+          chat.insertAdjacentHTML("beforeend", data.message_html || "");
+          if (data.pending_marker_html) chat.insertAdjacentHTML("beforeend", data.pending_marker_html);
+          scrollChatToBottom();
+        }}
+        if (textarea) textarea.value = "";
+        openTaskStream(data.stream_url);
+      }} finally {{
+        if (button) button.disabled = false;
+        if (textarea) textarea.focus();
+      }}
     }});
   }}
 }});
@@ -911,7 +996,7 @@ def render_cockpit_document(
 </div>
 {_main_header_tools(t.task_id)}
 </header>
-<div class="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
+<div class="flex-1 overflow-y-auto p-6 space-y-6 pb-32" data-chat-scroll-container="true">
 {chat_transcript}
 </div>
 <div class="absolute bottom-0 left-0 right-0 bg-background pt-4 pb-6 px-6 z-20">

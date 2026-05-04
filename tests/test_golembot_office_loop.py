@@ -232,6 +232,13 @@ def test_run_golembot_office_task_can_use_app_server_generator(tmp_path: Path) -
         def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
             return {"id": turn_id, "status": "completed"}
 
+        def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict:
+            seen["steered_text"] = text
+            return {}
+
+        def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
+            return {}
+
     result = run_golembot_office_task(
         message="生成项目方案",
         session_key="feishu:oc_123",
@@ -263,6 +270,13 @@ def test_run_golembot_office_task_reuses_existing_app_server_thread(tmp_path: Pa
         def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
             return {"id": turn_id, "status": "completed"}
 
+        def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict:
+            seen["steered_text"] = text
+            return {}
+
+        def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
+            return {}
+
     run_golembot_office_task(
         message="生成项目方案",
         session_key="feishu:oc_123",
@@ -290,6 +304,87 @@ def test_run_golembot_office_task_reuses_existing_app_server_thread(tmp_path: Pa
     binding = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")
     assert seen["thread_id"] == "new_thread"
     assert binding["codex_thread_id"] == "new_thread"
+
+
+def test_completed_task_with_new_control_runs_codex_again_on_same_task(tmp_path: Path) -> None:
+    task_dir = tmp_path / "gb-followup-existing-task"
+    task_dir.mkdir(parents=True)
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_123\nchat_id: oc_123\nsender_id: ou_456\n\n## User Message\n生成项目方案\n",
+        encoding="utf-8",
+    )
+    (task_dir / "status.json").write_text(
+        json.dumps(
+            {
+                "task_id": task_dir.name,
+                "state": "completed",
+                "created_at": "2026-04-28T01:00:00+00:00",
+                "updated_at": "2026-04-28T01:00:00+00:00",
+                "error": None,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (task_dir / "artifacts.json").write_text(
+        json.dumps(
+            {
+                "task_id": task_dir.name,
+                "summary": "旧材料",
+                "next_steps": [],
+                "items": [{"id": "document", "kind": "document", "path": "document.md"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (task_dir / "document.md").write_text("旧材料\n", encoding="utf-8")
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:02:00+00:00",
+                "type": "append_instruction",
+                "operator": "gui",
+                "payload": {"source": "gui", "kind": "operator_followup", "text": "补充团队分工。"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, str | None] = {}
+
+    class FakeAppServerBackend:
+        def start_task(self, task_dir_arg: Path, thread_id: str | None = None) -> CodexTurn:
+            seen["task_dir"] = task_dir_arg.name
+            seen["thread_id"] = thread_id
+            write_codex_outputs(task_dir_arg)
+            return CodexTurn(thread_id=thread_id or "thread_followup", turn_id="turn_followup")
+
+        def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+            return {"id": turn_id, "status": "completed"}
+
+        def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict:
+            seen["steered_text"] = text
+            return {}
+
+        def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
+            return {}
+
+    run_golembot_office_task(
+        message="补充团队分工。",
+        session_key="feishu:oc_123",
+        chat_id="oc_123",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id=task_dir.name,
+        generator="app-server",
+        publish=False,
+        codex_backend=FakeAppServerBackend(),
+    )
+
+    assert seen["task_dir"] == task_dir.name
+    assert seen["steered_text"] == "补充团队分工。"
+    assert read_status(task_dir)["state"] == "completed"
 
 
 def test_run_golembot_office_task_exposes_active_turn_while_app_server_runs(tmp_path: Path) -> None:

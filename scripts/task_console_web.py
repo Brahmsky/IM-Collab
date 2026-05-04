@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import socket
 import sys
+import threading
+import time
 import traceback
+from datetime import UTC, datetime
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from typing import Callable
+from urllib.parse import parse_qs, quote, urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -18,7 +23,18 @@ from bridge.console_demo_seed import (
     ensure_local_smoke_demo_task,
     resolve_repo_relative_path,
 )
+from bridge.cockpit_console_html import (
+    render_pending_reply_marker_fragment,
+    render_task_chat_fragment,
+    render_user_chat_message_fragment,
+)
+from bridge.task_control import read_control_commands
 from bridge.task_console_web import handle_console_action, render_console_html
+from bridge.task_index import build_task_index
+from bridge.task_ops import retry_golembot_task
+from bridge.task_protocol import read_status
+
+FollowupRunner = Callable[[Path], None]
 
 
 def _default_console_port() -> int:
@@ -57,10 +73,18 @@ def build_server(
     event_dir: Path,
     *,
     ipv4_only: bool = False,
+    followup_runner: FollowupRunner | None = None,
+    run_followup_in_background: bool = True,
 ) -> ThreadingHTTPServer:
+    followup_runner = followup_runner or _run_codex_app_server_followup
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
-            qs = parse_qs(urlparse(self.path).query)
+            parsed_url = urlparse(self.path)
+            qs = parse_qs(parsed_url.query)
+            if parsed_url.path == "/api/task-stream":
+                self._send_task_stream((qs.get("task") or [""])[0])
+                return
             task = (qs.get("task") or [None])[0]
             q = (qs.get("q") or [""])[0]
             try:
@@ -78,6 +102,9 @@ def build_server(
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length).decode("utf-8")
             form = {key: values[-1] for key, values in parse_qs(body, keep_blank_values=True).items()}
+            if self._wants_json():
+                self._handle_json_post(form)
+                return
             try:
                 flash = handle_console_action(tasks_root, form)
             except Exception as exc:
@@ -97,6 +124,62 @@ def build_server(
 
         def log_message(self, format: str, *args: object) -> None:
             return
+
+        def _wants_json(self) -> bool:
+            accept = self.headers.get("Accept", "")
+            requested_with = self.headers.get("X-Requested-With", "")
+            return "application/json" in accept or requested_with.lower() in {"fetch", "xmlhttprequest"}
+
+        def _handle_json_post(self, form: dict[str, str]) -> None:
+            try:
+                handle_console_action(tasks_root, form)
+                backend = ""
+                if form.get("action") == "append":
+                    backend = _trigger_real_codex_backend(
+                        tasks_root / form.get("task_id", ""),
+                        followup_runner,
+                        run_followup_in_background=run_followup_in_background,
+                    )
+                payload = {
+                    "ok": True,
+                    "task_id": form.get("task_id", ""),
+                    "backend": backend,
+                    "message_html": render_user_chat_message_fragment(form.get("text", "")),
+                    "pending_marker_html": render_pending_reply_marker_fragment(),
+                    "stream_url": f"/api/task-stream?task={quote(form.get('task_id', ''), safe='')}",
+                }
+                self._send_json(payload)
+            except Exception as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=400)
+
+        def _send_task_stream(self, task_id: str) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            last_payload = ""
+            for _ in range(90):
+                payload = _task_stream_payload(tasks_root, task_id)
+                encoded = json.dumps(payload, ensure_ascii=False)
+                if encoded != last_payload:
+                    try:
+                        self.wfile.write(f"data: {encoded}\n\n".encode("utf-8"))
+                        self.wfile.flush()
+                    except BrokenPipeError:
+                        return
+                    last_payload = encoded
+                if payload.get("done"):
+                    return
+                time.sleep(1)
+
+        def _send_json(self, payload: dict, status: int = 200) -> None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
 
         def _send_html(self, html: str) -> None:
             body = html.encode("utf-8")
@@ -118,6 +201,69 @@ def build_server(
     else:
         bind_host = host
     return ThreadingHTTPServer((bind_host, port), Handler)
+
+
+def _run_codex_app_server_followup(task_dir: Path) -> None:
+    retry_golembot_task(task_dir, generator="app-server", publish=False)
+
+
+def _trigger_real_codex_backend(
+    task_dir: Path,
+    followup_runner: FollowupRunner,
+    *,
+    run_followup_in_background: bool,
+) -> str:
+    status = read_status(task_dir)
+    if status.get("state") == "running":
+        return "active_turn"
+    if run_followup_in_background:
+        threading.Thread(target=followup_runner, args=(task_dir,), daemon=True).start()
+    else:
+        followup_runner(task_dir)
+    return "codex_app_server"
+
+
+def _task_stream_payload(tasks_root: Path, task_id: str) -> dict[str, object]:
+    selected = next((task for task in build_task_index(tasks_root) if task.task_id == task_id), None)
+    if selected is None:
+        return {"ok": False, "done": True, "error": "task not found"}
+    pending_controls = _has_control_newer_than_status(selected.path)
+    return {
+        "ok": True,
+        "done": selected.state in {"failed", "waiting_for_user"} or (selected.state == "completed" and not pending_controls),
+        "state": selected.state,
+        "chat_html": render_task_chat_fragment(selected),
+    }
+
+
+def _has_control_newer_than_status(task_dir: Path) -> bool:
+    try:
+        status = read_status(task_dir)
+    except Exception:
+        return False
+    status_time = _parse_iso_datetime(str(status.get("updated_at") or ""))
+    if status_time is None:
+        return False
+    for command in read_control_commands(task_dir):
+        if command.get("type") not in {"append_instruction", "confirm_instruction", "card_action"}:
+            continue
+        command_time = _parse_iso_datetime(str(command.get("timestamp") or ""))
+        if command_time is None or command_time > status_time:
+            return True
+    return False
+
+
+def _parse_iso_datetime(raw: str) -> datetime | None:
+    value = raw.strip()
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _error_page_html(trace: str) -> str:

@@ -30,7 +30,7 @@
 
 - **Python Bridge** 负责任务目录、`status.json` / `artifacts.json`、`control.jsonl`、外部进程调用等。
 - **Codex + superpowers** 负责规划与执行；cockpit **不**替代其编排。
-- **本地 Web cockpit** 是 **运维/观测面**：读 `tasks/` 与 `events/`（索引层），通过表单写入 **控制指令**（append / interrupt / ack / retry），**不**作为「创建任务」的主入口（创建仍来自 IM 或 `run_golembot_office_task` 等脚本）。
+- **本地 Web cockpit** 是 **运维/观测面**：读 `tasks/` 与 `events/`（索引层），通过受控输入写入 **控制指令**（append / interrupt / ack / retry），并把 GUI 补充消息送入与飞书后续消息相同的 Codex app-server 执行路径；**不**作为「创建任务」的主入口（创建仍来自 IM 或 `run_golembot_office_task` 等脚本）。
 
 ```mermaid
 flowchart LR
@@ -42,10 +42,12 @@ flowchart LR
     Bridge[task_console_web.handle_console_action]
     Tasks["tasks/<task_id>/"]
   end
-  Browser -->|GET / POST| Web
+  Browser -->|GET / async POST / SSE| Web
   Web -->|render| CockpitHTML[bridge/cockpit_console_html.py]
-  Web -->|POST| Bridge
+  Web -->|POST append| Bridge
+  Web -->|follow-up| Codex[Codex app-server]
   Bridge -->|append/interrupt/ack| Tasks
+  Codex -->|status/artifacts| Tasks
   CockpitHTML -->|build_task_index| Tasks
 ```
 
@@ -129,9 +131,11 @@ flowchart LR
 **明确保留（与任务协议一致）**
 
 - `GET /` 支持 `?task=<task_id>` 预选任务、`?q=` 子串过滤（在 `task_id`、`session_key`、`summary`、`codex_thread_id`、`state` 等拼接字段中搜索，逻辑见 `bridge/cockpit_console_html._filter_tasks`）。
-- `POST`：`append`（需 `text`）、`interrupt`、`ack`（可选 `note`）、`retry`（可选 `generator`、`publish`）。
-- 表单中普遍带 **`redirect_task`**，POST 后回到同一任务视图，避免「提交后跳到列表第一项」类体验问题。
-- Flash 消息区（操作成功后的绿色提示条）。
+- `POST`：`append`（需 `text`）、`interrupt`、`ack`（可选 `note`）、`retry`（隐藏 `generator=app-server`）。
+- 底部组合框的 `append` 使用 **fetch 异步提交**：不整页刷新，成功后追加用户气泡并滚到底部。
+- `Accept: application/json` 的 append 响应会返回消息片段、任务流 URL，并在需要时触发真实 Codex app-server 后续执行。
+- 传统整页 POST 仍作为非 JS 兜底路径，表单中保留 **`redirect_task`**，避免「提交后跳到列表第一项」类体验问题。
+- 成功操作不再显示绿色 flash；失败仍返回可见错误。
 - 右侧 **时间线**：读取 `control.jsonl` 尾部若干行 + `events` 目录下最近文件名的索引说明（非实时 WebSocket）。
 
 **微调（实现细节，不改变协议）**
@@ -141,7 +145,7 @@ flowchart LR
 **不在 cockpit 内承诺的能力**
 
 - **新建任务**：侧栏按钮打开 **`<dialog>`** 说明如何通过飞书或 CLI 创建任务；**不在此页 POST 创建目录**。
-- **插件 / 帮助 / 设置**：当前多为 **`href="#"` + `title`**，占位；可按产品需要再接文档或环境变量 URL。
+- **插件 / 帮助 / 设置**：无真实动作时不提供可点击假链接；可按产品需要再接文档或环境变量 URL。
 
 ---
 
@@ -160,14 +164,46 @@ flowchart LR
 
 | `action` | 必填字段 | 可选字段 | 后端行为（摘要） |
 |----------|----------|----------|------------------|
-| `append` | `text` | — | `append_control_command(..., "append_instruction", {"text": ...})` |
+| `append` | `text` | — | `append_control_command(..., "append_instruction", {"source": "gui", "kind": "operator_followup", "text": ...})`；JSON 请求还会触发真实 Codex 后续路径 |
 | `interrupt` | — | — | `append_control_command(..., "interrupt", {})` |
 | `ack` | — | `note` | `ack_task(..., note=...)` |
-| `retry` | — | `generator`（默认 `local`）、`publish`（checkbox `1`） | `retry_golembot_task(...)` |
+| `retry` | — | `generator`（普通 UI 隐藏，默认 `app-server`） | `retry_golembot_task(...)` |
 
-错误处理：缺字段或非法 `action` 时 `handle_console_action` 抛 `ValueError`；`scripts/task_console_web.py` 的 `POST` 将其捕获后写入 **flash**（形如 `error: ...`），**仍返回 HTTP 200** 与整页 HTML，便于在页面上直接看到失败原因而非裸 400。
+错误处理：缺字段或非法 `action` 时 `handle_console_action` 抛 `ValueError`。普通 HTML POST 会返回带错误的页面；JSON POST 返回 `{"ok": false, "error": ...}` 和 HTTP 400，前端不刷新整页。
 
-### 4.3 与「任务完成判定」的关系
+### 4.3 JSON 与任务流接口
+
+底部组合框使用：
+
+```http
+POST /
+Accept: application/json
+Content-Type: application/x-www-form-urlencoded
+```
+
+成功响应：
+
+```json
+{
+  "ok": true,
+  "task_id": "...",
+  "backend": "active_turn | codex_app_server",
+  "message_html": "...",
+  "pending_marker_html": "...",
+  "stream_url": "/api/task-stream?task=..."
+}
+```
+
+随后浏览器打开：
+
+```http
+GET /api/task-stream?task=<task_id>
+Accept: text/event-stream
+```
+
+当前流式层级是 **任务协议快照流**：服务端持续读取 `status.json`、`artifacts.json`、`control.jsonl` 并返回聊天区 HTML 快照。它不是假的前端动画；事实来源仍是任务协议与真实 Codex app-server 执行结果。后续可将数据源替换为 Codex raw events，而不改变 GUI 布局契约。
+
+### 4.4 与「任务完成判定」的关系
 
 再次强调 **AGENTS.md**：任务是否完成以 **`tasks/<task_id>/status.json`** 与 **`artifacts.json`** 为准，**不以** cockpit 页面是否刷新、tmux 文本为准。Cockpit 只反映索引层读到的快照。
 
@@ -221,7 +257,8 @@ python scripts/task_console_web.py --ensure-demo --ipv4-only --open
 | 页面几乎无样式、布局塌缩 | **Tailwind CDN** 被公司代理或防火墙拦截 | 换网络或白名单 `cdn.tailwindcss.com` / `fonts.googleapis.com`；不要用 `GUI/code.html` 冒充联调 UI |
 | `localhost` 连不上 | IPv6 / DNS / 浏览器差异 | 使用终端打印的 **`127.0.0.1`** |
 | 列表为空 | `tasks/` 无有效 `status.json` 或路径错 | 使用 `--ensure-demo` 或检查 `--tasks-root` |
-| POST 后看不到变化 | 未带 `redirect_task` 或缓存 | 确认表单隐藏字段；强刷或再看 `control.jsonl` |
+| 发送后没有新增气泡 | 浏览器禁用 JS 或 JSON POST 失败 | 查看控制台网络请求；无 JS 时会走整页 POST 兜底 |
+| 发送后没有继续执行 | Codex app-server 未启动或任务状态仍在运行中等待活跃回合消费控制日志 | 查看 `logs/services/task_console_web.log`、`tasks/<task_id>/control.jsonl` 与 `status.json` |
 
 ### 6.4 请勿混淆的两种「预览」
 
@@ -242,7 +279,7 @@ python scripts/task_console_web.py --ensure-demo --ipv4-only --open
 |------|------|
 | **`bridge/cockpit_console_html.py`** | **唯一**大块 HTML 字符串拼装：`render_cockpit_document`、侧栏/主栏/右侧、`_append_form`、`_ops_form`、`_right_inspector_drawer`、`_build_inspector_primary_rows_html`、`_cockpit_header_title`、`_shell_head` 等。改 UI 首选此文件。 |
 | **`bridge/task_console_web.py`** | `render_console_html`：组装索引 + 调用 `render_cockpit_document`；`handle_console_action`：四类动作与参数校验。 |
-| **`scripts/task_console_web.py`** | `ThreadingHTTPServer`、`GET`/`POST` 解析、`flash` cookie/query、**IPv4-only / 双栈** 监听、`--open`、端口打印。 |
+| **`scripts/task_console_web.py`** | `ThreadingHTTPServer`、`GET`/`POST` 解析、JSON append、SSE 任务流、Codex follow-up 触发、**IPv4-only / 双栈** 监听、`--open`、端口打印。 |
 | **`bridge/task_index.py`** | `TaskSummary` / `EventSummary`、`build_task_index`、`summarize_events` — cockpit 展示字段的数据源。 |
 | **`bridge/console_demo_seed.py`** | 本地示例任务与绑定种子。 |
 | **`GUI/code.html`** | 静态设计参照；**非**运行时入口。 |
@@ -277,7 +314,7 @@ python -m pytest tests/test_task_console_web.py -q
 
 1. **Tailwind 运行时 CDN**：无构建步骤，依赖浏览器拉取 `cdn.tailwindcss.com`；离线或强策略网络下样式会失效。若未来需要 **零外网**，需引入构建链（如 Tailwind CLI）或将关键 utility 编译进静态 CSS（工作量与 AGENTS「小步可测」权衡后决策）。
 2. **无认证**：本地环回使用为主；**勿**将 `--host 0.0.0.0` 暴露在无防火墙的公网。
-3. **侧栏链接**：帮助/设置等多为占位 `href="#"`，避免绑定到某一固定 GitHub org（fork 友好）。
+3. **帮助/设置入口**：当前不绑定固定 GitHub org 或个人路径；需要团队确定真实目标后再开放。
 
 ### 8.2 建议的后续改进（非排期承诺）
 

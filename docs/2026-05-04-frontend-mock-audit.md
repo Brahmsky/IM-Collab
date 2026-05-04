@@ -36,12 +36,12 @@
 | 执行清单 | 读取上下文/brief/Codex/工件/回传 | `_step_class(status/artifacts)` | 半真实 | 粗粒度来自真实状态，但步骤名称仍是固定协议里程碑 | 短期可接受；长期接入真实 run event / Codex turn event |
 | 工件卡片 | document/slides/whiteboard | `artifact_outputs` | 真实 | 类型图标由 label 推断，略脆弱 | 后续从 `artifacts.items[].kind/type` 直接派生 |
 | 底部附件按钮 | paperclip disabled | 静态禁用 | 半真实 | 文案含 MVP，产品语气差 | 改为“附件请在飞书会话发送”或隐藏 |
-| 底部输入框 | 追加指令 | POST `append` 写 `control.jsonl` | 真实 | 此前返回“已为任务追加指令”flash；语气像后台控制台；Enter 不发送 | 已改为静默写入，并补 `source=gui/kind=operator_followup`；Enter 发送，Shift+Enter 换行 |
+| 底部输入框 | 追加指令 | 异步 POST 写 `control.jsonl`，并按任务状态触发真实 Codex 后端 | 真实 | 此前普通 HTML POST 会整页刷新；Enter 只触发旧提交路径；已完成任务收到补充后没有继续执行 Codex | 已改为 fetch 异步发送、Enter 发送、Shift+Enter 换行；发送成功后追加真实用户气泡、自动滚到底部，并打开 `/api/task-stream` 接收任务快照 |
 | 右侧详情 | 状态/来源/创建/任务 ID | `TaskSummary` | 真实 | 来源显示 `session_key`，对用户偏技术 | 后续显示群名，技术 ID 收到展开区 |
 | 运维字段 | Codex thread/turn/control | `task-bindings.json/control.jsonl/ack.json` | 真实 | 属于高级信息 | 保持折叠 |
 | 右侧打断 | POST `interrupt` 写 `control.jsonl` | 真实 | 只能在运行态出现 | 已按状态约束，完成/待回复时不展示 |
 | 右侧确认 | 写 `ack.json` | 真实 | 只能在 `waiting_for_user` 出现 | 已按状态约束 |
-| 右侧 retry | 调 `retry_golembot_task` | 真实 | generator 下拉暴露 `local/app-server/codex`，对产品用户过于底层 | 普通模式隐藏底层参数；待回复时显示“执行补充” |
+| 右侧 retry / 执行补充 | 调 `retry_golembot_task` / Codex app-server | 真实 | generator 下拉暴露 `local/app-server/codex`，对产品用户过于底层 | 普通模式隐藏底层参数；待回复时显示“执行补充”；底部发送补充时会自动触发真实 Codex 后端继续执行 |
 | 发布到飞书 | retry publish flag | 真实参数 | 半真实 | 不是普通用户应理解的动作 | 已从普通界面隐藏；后续改为“回传到原会话”并按权限显示 |
 | 时间线 | control/events 文件 | `control.jsonl` + latest events | 真实 | 只是文本 dump，不是产品化事件流 | 后续结构化展示 |
 | 空状态 | “请先从飞书会话触发任务” | 静态文案 | 已收口 | 已移除 demo/MVP/CLI 说明 | 后续可接入真实新任务入口 |
@@ -57,9 +57,11 @@
 - 助手回复是静态“收到，正在...”。
 - 追加指令后显示顶部 flash，或者被错误地画成已处理的聊天泡。
 - 文本框不支持聊天应用的基础行为：Enter 发送、Shift+Enter 换行。
+- 发送后整页刷新，破坏聊天窗口连续性。
+- 已完成任务收到 GUI 补充后只写本地 JSON，没有自动接入真实 Codex app-server 后端继续执行。
 - checklist 只是粗粒度协议状态，不是 Codex 实时输出。
 
-因此，中央工作区必须是聊天窗口，但只能投影真实 `request.md + control.jsonl + status.json + artifacts.json`。有真实完成结果时显示助手气泡；完成后出现新补充时显示用户气泡和“待回复”，不伪造新的 assistant 回复。
+因此，中央工作区必须是聊天窗口，但只能投影真实 `request.md + control.jsonl + status.json + artifacts.json`。有真实完成结果时显示助手气泡；完成后出现新补充时显示用户气泡和“待回复”，同时触发真实 Codex 后端继续执行，不伪造新的 assistant 回复。
 
 ## 立即整改清单
 
@@ -73,6 +75,9 @@
 8. 所有成功类表单提交不再弹绿色条，避免把操作台变成后台管理系统；失败仍保留错误反馈。
 9. 底部输入框支持 Enter 发送、Shift+Enter 换行。
 10. 右侧操作按任务状态显示：运行态打断，待确认态确认，完成后补充态执行补充。
+11. 底部发送改为异步 POST：不整页刷新，成功后追加真实用户气泡并自动滚到底部。
+12. 异步发送后接入真实 Codex 后端：运行中任务通过既有控制通道进入活跃回合，已完成/等待/失败任务触发 Codex app-server 后续执行。
+13. GUI 打开 `/api/task-stream`，用 SSE 快照更新聊天区；当前是任务协议级流，后续可替换为 Codex raw event 级实时流。
 
 ## 后续必须避免
 

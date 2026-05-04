@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,7 +85,7 @@ def run_golembot_office_task(
         }
 
     try:
-        if not (task_dir / "artifacts.json").exists():
+        if _should_generate_artifacts(task_dir):
             codex_turn = _generate_artifacts(
                 task_dir,
                 generator,
@@ -151,6 +152,38 @@ def _generate_artifacts(
             on_turn_started=on_turn_started,
         )
     raise ValueError(f"unsupported generator: {generator}")
+
+
+def _should_generate_artifacts(task_dir: Path) -> bool:
+    if not (task_dir / "artifacts.json").exists():
+        return True
+    try:
+        status = read_status(task_dir)
+    except Exception:
+        return True
+    status_time = _parse_iso_datetime(str(status.get("updated_at") or ""))
+    if status_time is None:
+        return False
+    for command in read_control_commands(task_dir):
+        if command.get("type") not in {"append_instruction", "confirm_instruction", "card_action"}:
+            continue
+        command_time = _parse_iso_datetime(str(command.get("timestamp") or ""))
+        if command_time is None or command_time > status_time:
+            return True
+    return False
+
+
+def _parse_iso_datetime(raw: str) -> datetime | None:
+    value = raw.strip()
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _request_markdown(

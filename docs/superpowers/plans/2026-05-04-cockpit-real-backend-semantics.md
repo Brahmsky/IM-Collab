@@ -330,8 +330,84 @@ Run: `rtk .venv/bin/python -m pytest tests/test_task_console_web.py -q`
 
 Expected: PASS.
 
+### Task 12: Async Composer And Protocol-Level Streaming
+
+**Files:**
+- Modify: `bridge/cockpit_console_html.py`
+- Modify: `scripts/task_console_web.py`
+- Test: `tests/test_task_console_web.py`
+- Test: `tests/test_task_console_web_script.py`
+
+- [x] **Step 1: Write failing tests**
+
+Assert the rendered composer contains:
+
+```python
+assert 'data-async-append="true"' in html
+assert 'data-chat-scroll-container="true"' in html
+assert "fetch(form.action || window.location.href" in html
+assert "insertAdjacentHTML(\"beforeend\"" in html
+assert "chat.scrollTop = chat.scrollHeight" in html
+assert "new EventSource" in html
+assert "/api/task-stream?task=" in html
+```
+
+Assert JSON append:
+
+```python
+assert payload["ok"] is True
+assert payload["backend"] == "codex_app_server"
+assert "<!DOCTYPE html>" not in json.dumps(payload)
+```
+
+- [x] **Step 2: Implement**
+
+- Add fetch-based append form handling.
+- Append the returned real user-message HTML fragment without refreshing the page.
+- Remove stale pending markers, append a fresh pending marker, and scroll to the bottom.
+- Add `/api/task-stream?task=<task_id>` SSE endpoint that streams task protocol snapshots.
+
+- [x] **Step 3: Verify**
+
+Run:
+
+```bash
+rtk .venv/bin/python -m pytest tests/test_task_console_web.py tests/test_task_console_web_script.py -q
+```
+
+Expected: PASS.
+
+### Task 13: Trigger Real Codex Backend For GUI Follow-Ups
+
+**Files:**
+- Modify: `scripts/task_console_web.py`
+- Modify: `bridge/golembot_office_loop.py`
+- Test: `tests/test_task_console_web_script.py`
+- Test: `tests/test_golembot_office_loop.py`
+
+- [x] **Step 1: Write failing tests**
+
+Assert a completed task receiving JSON append triggers a follow-up runner, and that a completed task with newer `control.jsonl` entries runs the Codex app-server path again even when `artifacts.json` already exists.
+
+- [x] **Step 2: Implement**
+
+- JSON append writes the real `append_instruction` first.
+- If task is running, keep the existing active-turn control path.
+- If task is completed, failed, waiting, or queued, start a Codex app-server follow-up in the background.
+- `run_golembot_office_task` now regenerates when control commands are newer than `status.updated_at`, so existing artifacts do not suppress a real follow-up.
+
+- [x] **Step 3: Verify**
+
+Run:
+
+```bash
+rtk .venv/bin/python -m pytest tests/test_task_console_web_script.py tests/test_golembot_office_loop.py -q
+```
+
+Expected: PASS.
+
 ## Self-Review
 
-- Spec coverage: central conversation, flash behavior, append provenance, top title rename, Enter-to-send, state-scoped controls, and full mock audit are covered. Search, fake controls, and product copy remain explicit next tasks.
+- Spec coverage: central conversation, flash behavior, append provenance, top title rename, Enter-to-send, state-scoped controls, async composer, auto-scroll, SSE snapshot stream, and real Codex app-server follow-up are covered. Search, fake controls, and product copy remain explicit next tasks.
 - Placeholder scan: no `TBD` or vague implementation placeholders; incomplete tasks include exact tests and code targets.
 - Type consistency: functions use existing `TaskSummary`, `Path`, `control.jsonl`, and `request.md` concepts already present in the codebase.
