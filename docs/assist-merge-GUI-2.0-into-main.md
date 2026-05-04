@@ -1,6 +1,6 @@
 # 协助：将 GUI-2.0 上的提交分批 PR 到 `main`
 
-**目标：** 不向 `main` 一次性大合并；每个 PR 只带 **一笔** cherry-pick（顺序与 `GUI-2.0` 历史一致）。  
+**目标：** 不向 `main` 一次性大合并；与 **`GUI-2.0` 相对 `main` 的 5 个提交**对应 **4 个 PR 分支**（第 2 个 PR 内 **按序 cherry-pick 两笔**：`8acfcaf` → `3e0a850`）。  
 **约定远程：** `origin`；**上游默认分支：** `main`。
 
 ---
@@ -38,65 +38,36 @@ feat(gui): 引入 GUI 2.0 静态稿与设计资产（合并自 GUI-2.0）
 
 ---
 
-### PR #2：`into-main/02-cockpit-web`（cherry-pick `8acfcaf`）
+### PR #2：`into-main/02-cockpit-web`（cherry-pick `8acfcaf`，再 `3e0a850`）
 
 **标题**
 
 ```text
-feat(web): 服务端渲染 Tailwind 三栏 cockpit（初版，合并自 GUI-2.0）
+feat(web): 三栏 cockpit 初版与控制台路径、环回及 demo 种子修复（合并自 GUI-2.0）
 ```
 
 **描述**
 
 ```markdown
 ## 摘要
-在 `main` 已包含 `GUI/` 资产的前提下，引入 **Python 服务端渲染** 的三栏任务 Web 控制台初版，与 GUI 稿同系（Tailwind + 布局骨架）。
+在 `main` 已包含 `GUI/` 资产的前提下，本 PR **连续合入两笔** `GUI-2.0` 提交：先 **服务端 Tailwind 三栏 cockpit 初版**，再 **Web 控制台路径解析、IPv4/IPv6 环回、`--ensure-demo` 与 demo 种子**等修复，使本地可稳定演示。
 
 ## 变更范围
-- `bridge/cockpit_console_html.py`、`bridge/task_console_web.py`、`scripts/task_console_web.py` 等与首版 cockpit 相关的实现（以本提交实际 diff 为准）。
+- 以 `8acfcaf`、`3e0a850` 的 diff 为准，通常涉及 `bridge/cockpit_console_html.py`、`bridge/task_console_web.py`、`scripts/task_console_web.py`、`bridge/console_demo_seed.py` 等。
 
 ## 依赖与顺序
-- **须先合并 PR #1**（否则缺少 GUI 参照与约定路径）。
+- **须先合并 PR #1**。
 
 ## 验收建议
-- 本地执行 `python scripts/task_console_web.py --ensure-demo`（或按 README）可打开页面；任务列表与选中态可工作。
+- 从仓库根或 `scripts/` 子目录启动均能解析 `tasks/`；`--ensure-demo` 可生成 `demo-local-smoke`；必要时 `--ipv4-only` 可规避 `localhost`/`::1` 问题。
 
 ## 来源
-- 自 `GUI-2.0` cherry-pick：`8acfcaf`
+- 自 `GUI-2.0` 按序 cherry-pick：`8acfcaf`，然后 `3e0a850`
 ```
 
 ---
 
-### PR #3：`into-main/03-web-fixes`（cherry-pick `3e0a850`）
-
-**标题**
-
-```text
-fix(web): 控制台任务/events 路径与环回监听、本地 demo 种子（合并自 GUI-2.0）
-```
-
-**描述**
-
-```markdown
-## 摘要
-修正本地 Web 控制台在 **工作目录不在仓库根**、以及 **IPv6 环回** 等环境下的可用性，并完善 `--ensure-demo` 等本地演示数据写入。
-
-## 变更范围
-- `scripts/task_console_web.py`、`bridge/console_demo_seed.py` 等（以本提交 diff 为准）。
-
-## 依赖与顺序
-- **须先合并 PR #2**。
-
-## 验收建议
-- 从 `scripts/` 子目录启动仍能解析 `tasks/`；必要时 `--ipv4-only` 可连上 `127.0.0.1`；`--ensure-demo` 可生成 `demo-local-smoke`。
-
-## 来源
-- 自 `GUI-2.0` cherry-pick：`3e0a850`
-```
-
----
-
-### PR #4：`into-main/04-readme-cockpit`（cherry-pick `cc95747`）
+### PR #3：`into-main/03-readme-cockpit`（cherry-pick `cc95747`）
 
 **标题**
 
@@ -114,7 +85,7 @@ docs: README 补充 Web 控制台、--ensure-demo 与仓库根相对路径（合
 - 以 `README.md` 为主；若同提交含其它小清理（如误带流文件），以 diff 为准。
 
 ## 依赖与顺序
-- **须先合并 PR #3**。
+- **须先合并 PR #2**。
 
 ## 验收建议
 - 按 README 命令可在本机拉起控制台并访问示例任务 URL。
@@ -125,7 +96,7 @@ docs: README 补充 Web 控制台、--ensure-demo 与仓库根相对路径（合
 
 ---
 
-### PR #5：`into-main/05-cockpit-align-docs`（cherry-pick `9797736`）
+### PR #4：`into-main/04-cockpit-align-docs`（cherry-pick `9797736`）
 
 **标题**
 
@@ -143,7 +114,7 @@ feat(cockpit): Web 控制台与 GUI 稿对齐并补充协作者进展文档（�
 - `bridge/cockpit_console_html.py`、`GUI/code.html`（注释/说明）、`README.md`、`docs/2026-05-04-cockpit-ui-progress.md`、`docs/cockpit-ui-progress.md` 等（以本提交 diff 为准）。
 
 ## 依赖与顺序
-- **须先合并 PR #4**。
+- **须先合并 PR #3**。
 
 ## 验收建议
 - 本地 cockpit 视觉与 `GUI/code.html` 一致系；文档内链接可打开；`tests/test_task_console_web.py` 通过。
@@ -152,41 +123,18 @@ feat(cockpit): Web 控制台与 GUI 稿对齐并补充协作者进展文档（�
 - 自 `GUI-2.0` cherry-pick：`9797736`
 ```
 
----
-
-### PR #6（可选）：`into-main/06-assist-merge-doc`
-
-**标题**
-
-```text
-docs: 增加 GUI-2.0 分批合入 main 的操作协助清单
-```
-
-**描述**
-
-```markdown
-## 摘要
-将 `docs/assist-merge-GUI-2.0-into-main.md` 合入 `main`，便于协作者按步骤把 `GUI-2.0` 的剩余改动以多 PR 形式并入 `main`。
-
-## 依赖与顺序
-- **须先合并 PR #5**（或至少保证 `main` 上 cockpit 相关变更已稳定）。
-
-## 说明
-- 本文件可用「从 `GUI-2.0` 检出该文件再提交」的方式合入，见本文档前文「PR #6」命令块。
-```
+**说明（不计入上述 4 个 PR）：** 若希望本协助清单 `docs/assist-merge-GUI-2.0-into-main.md` 出现在 `main` 上，而它又只在 `GUI-2.0` 的后续小提交里，可在 **PR #4 合并后** 另开一个小 PR（例如用 `git checkout GUI-2.0 -- docs/assist-merge-GUI-2.0-into-main.md`），见文末命令块。
 
 ---
 
 ## 当前进度（由协助脚本/操作生成）
 
-| 步骤 | 提交（短 SHA） | 说明 | 本地分支 | 远程 |
-|------|----------------|------|----------|------|
-| 1 | `42e0019` | GUI 2.0 静态资源与设计稿 | `into-main/01-gui-assets` | 待你 `git push`（若网络失败） |
-| 2 | `8acfcaf` | 服务端 Tailwind cockpit 初版 | 待 PR1 合并后再建 | — |
-| 3 | `3e0a850` | Web 路径、双栈、`--ensure-demo` | 同上 | — |
-| 4 | `cc95747` | README 控制台说明等 | 同上 | — |
-| 5 | `9797736` | cockpit 与 GUI 对齐 + 进展文档大包 | 同上 | — |
-| 6（可选） | — | 仅把本协助清单文件拷进 `main`（见下「检出文件」法，避免追 SHA） | PR#5 合并后 | — |
+| PR | 提交（按序） | 说明 | compare 分支 |
+|----|----------------|------|----------------|
+| **#1** | `42e0019` | GUI 2.0 静态资源与设计稿 | `into-main/01-gui-assets` |
+| **#2** | `8acfcaf` → `3e0a850` | cockpit 初版 + 路径/环回/demo 修复（**同一分支两笔 pick**） | `into-main/02-cockpit-web` |
+| **#3** | `cc95747` | README 控制台说明等 | `into-main/03-readme-cockpit` |
+| **#4** | `9797736` | cockpit 与 GUI 对齐 + 进展文档等 | `into-main/04-cockpit-align-docs` |
 
 在本地执行下面命令可再次确认顺序（从新到旧显示，**cherry-pick 时要从旧到新**）：
 
@@ -227,6 +175,8 @@ git push -u origin into-main/01-gui-assets
 
 ## PR #2（必须在 PR#1 已合并进 `main` 之后）
 
+同一分支上 **先后** cherry-pick 两笔（顺序不要反）：
+
 ```bash
 git fetch origin
 git checkout main
@@ -235,6 +185,7 @@ git pull origin main
 git branch -D into-main/02-cockpit-web 2>/dev/null || true
 git checkout -b into-main/02-cockpit-web main
 git cherry-pick 8acfcaf
+git cherry-pick 3e0a850
 git push -u origin into-main/02-cockpit-web
 ```
 
@@ -249,13 +200,13 @@ git fetch origin
 git checkout main
 git pull origin main
 
-git branch -D into-main/03-web-fixes 2>/dev/null || true
-git checkout -b into-main/03-web-fixes main
-git cherry-pick 3e0a850
-git push -u origin into-main/03-web-fixes
+git branch -D into-main/03-readme-cockpit 2>/dev/null || true
+git checkout -b into-main/03-readme-cockpit main
+git cherry-pick cc95747
+git push -u origin into-main/03-readme-cockpit
 ```
 
-开 PR：`main` ← `into-main/03-web-fixes`。
+开 PR：`main` ← `into-main/03-readme-cockpit`。
 
 ---
 
@@ -266,30 +217,13 @@ git fetch origin
 git checkout main
 git pull origin main
 
-git branch -D into-main/04-readme-cockpit 2>/dev/null || true
-git checkout -b into-main/04-readme-cockpit main
-git cherry-pick cc95747
-git push -u origin into-main/04-readme-cockpit
-```
-
-开 PR：`main` ← `into-main/04-readme-cockpit`。
-
----
-
-## PR #5（在 PR#4 已合并后）
-
-```bash
-git fetch origin
-git checkout main
-git pull origin main
-
-git branch -D into-main/05-cockpit-align-docs 2>/dev/null || true
-git checkout -b into-main/05-cockpit-align-docs main
+git branch -D into-main/04-cockpit-align-docs 2>/dev/null || true
+git checkout -b into-main/04-cockpit-align-docs main
 git cherry-pick 9797736
-git push -u origin into-main/05-cockpit-align-docs
+git push -u origin into-main/04-cockpit-align-docs
 ```
 
-开 PR：`main` ← `into-main/05-cockpit-align-docs`。
+开 PR：`main` ← `into-main/04-cockpit-align-docs`。
 
 ---
 
@@ -312,21 +246,21 @@ git cherry-pick --abort
 
 ---
 
-## PR #6（可选，在 PR#5 已合并后）
+## 可选：协助清单单独进 `main`（在 PR#4 已合并后）
 
-把本协助文档并进 `main`（**不依赖 cherry-pick SHA**，从仍含该文件的 `GUI-2.0` 检出即可）：
+把 `docs/assist-merge-GUI-2.0-into-main.md` 并进 `main`（从仍含该文件的 `GUI-2.0` 检出即可，**不必**与上面四笔一一对应）：
 
 ```bash
 git fetch origin
 git checkout main
 git pull origin main
 
-git branch -D into-main/06-assist-merge-doc 2>/dev/null || true
-git checkout -b into-main/06-assist-merge-doc main
+git branch -D into-main/optional-assist-merge-doc 2>/dev/null || true
+git checkout -b into-main/optional-assist-merge-doc main
 git checkout GUI-2.0 -- docs/assist-merge-GUI-2.0-into-main.md
 git add docs/assist-merge-GUI-2.0-into-main.md
 git commit -m "docs: add assist checklist for merging GUI-2.0 into main"
-git push -u origin into-main/06-assist-merge-doc
+git push -u origin into-main/optional-assist-merge-doc
 ```
 
 ---
