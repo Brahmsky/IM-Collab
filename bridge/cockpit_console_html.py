@@ -181,9 +181,63 @@ def _build_inspector_primary_rows_html(t: TaskSummary) -> str:
 def _group_by_session(tasks: list[TaskSummary]) -> OrderedDict[str, list[TaskSummary]]:
     groups: OrderedDict[str, list[TaskSummary]] = OrderedDict()
     for t in tasks:
-        key = (t.session_key or "").strip() or "未绑定会话"
+        key = _task_group_label(t)
         groups.setdefault(key, []).append(t)
     return groups
+
+
+def _task_group_label(t: TaskSummary) -> str:
+    if t.chat_name.strip():
+        return t.chat_name.strip()
+    if t.chat_id.strip():
+        return f"feishu:{t.chat_id.strip()}"
+    session_key = (t.session_key or "").strip()
+    if session_key:
+        parts = session_key.split(":")
+        if len(parts) >= 2 and parts[1]:
+            return f"{parts[0]}:{parts[1]}"
+        return session_key
+    return "未绑定会话"
+
+
+def _session_display_title(t: TaskSummary) -> str:
+    title = (t.session_title or "").strip()
+    if title:
+        return title
+    raw = (t.summary or "").strip().split("\n", 1)[0].strip()
+    if raw:
+        return raw[:22] + ("…" if len(raw) > 22 else "")
+    return t.task_id
+
+
+def _session_menu_html(t: TaskSummary, search_query: str) -> str:
+    tid = escape(t.task_id)
+    session_key = escape(t.session_key or "")
+    title = escape(_session_display_title(t), quote=True)
+    q = escape(search_query, quote=True)
+    return f"""<details class="relative session-actions opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+<summary class="list-none w-7 h-7 rounded-md hover:bg-white/80 flex items-center justify-center cursor-pointer text-text-secondary" aria-label="会话操作">
+<span class="material-symbols-outlined text-[18px]">more_horiz</span>
+</summary>
+<div class="absolute right-0 top-full mt-1 w-56 bg-white border border-border rounded-lg shadow-lg p-2 z-50">
+<form method="post" class="space-y-2">
+<input type="hidden" name="action" value="rename_session">
+<input type="hidden" name="task_id" value="{tid}">
+<input type="hidden" name="session_key" value="{session_key}">
+<input type="hidden" name="redirect_task" value="{tid}">
+<input type="hidden" name="q" value="{q}">
+<label class="block text-[12px] text-text-secondary">重命名</label>
+<input name="session_title" value="{title}" required class="w-full border border-border rounded-md px-2 py-1.5 text-[13px] text-text-primary">
+<button type="submit" class="w-full rounded-md bg-primary text-white px-2 py-1.5 text-[13px] font-medium">保存名称</button>
+</form>
+<form method="post" class="mt-2 pt-2 border-t border-border">
+<input type="hidden" name="action" value="delete_session">
+<input type="hidden" name="task_id" value="{tid}">
+<input type="hidden" name="session_key" value="{session_key}">
+<button type="submit" class="w-full rounded-md px-2 py-1.5 text-[13px] text-error hover:bg-[#FFECE8] text-left">删除 session</button>
+</form>
+</div>
+</details>"""
 
 
 def _pick_selected(tasks: list[TaskSummary], selected_task_id: str | None) -> TaskSummary | None:
@@ -468,6 +522,7 @@ def render_cockpit_document(
 
     sidebar_links: list[str] = []
     for session_name, group in groups.items():
+        group_open = selected is not None and any(t.task_id == selected.task_id for t in group)
         items: list[str] = []
         for t in group:
             active = selected is not None and t.task_id == selected.task_id
@@ -483,17 +538,23 @@ def render_cockpit_document(
             )
             q_suffix = f"&q={quote(search_query)}" if search_query.strip() else ""
             href = f"/?task={quote(t.task_id, safe='')}{q_suffix}"
+            session_title = _session_display_title(t)
+            session_menu = _session_menu_html(t, search_query)
             items.append(
-                f"""<div class="relative group">{bar}<a class="{row_cls}" href="{href}" data-task-id="{escape(t.task_id)}">
+                f"""<div class="relative group flex items-center">{bar}<a class="{row_cls} min-w-0 flex-1" href="{href}" data-task-id="{escape(t.task_id)}">
 <span class="material-symbols-outlined text-[18px] {'text-primary' if active else 'text-text-secondary'}">chat_bubble</span>
-<span class="truncate {'font-medium' if active else ''}">{escape(t.task_id)}</span>
-</a></div>"""
+<span class="truncate {'font-medium' if active else ''}">{escape(session_title)}</span>
+</a>{session_menu}</div>"""
             )
+        open_attr = " open" if group_open else ""
         sidebar_links.append(
-            f"""<div>
-<h3 class="px-3 text-[12px] font-medium text-text-secondary mb-1.5">{escape(session_name)}</h3>
-<div class="space-y-0.5">{"".join(items)}</div>
-</div>"""
+            f"""<details class="session-group"{open_attr}>
+<summary class="group flex items-center justify-between px-3 py-1.5 text-[12px] font-medium text-text-secondary cursor-pointer rounded-md hover:bg-surface-hover">
+<span class="truncate">{escape(session_name)}</span>
+<span class="material-symbols-outlined text-[16px] transition-transform group-open:rotate-180">expand_more</span>
+</summary>
+<div class="space-y-0.5 mt-1">{"".join(items)}</div>
+</details>"""
         )
 
     if tasks and not filtered:

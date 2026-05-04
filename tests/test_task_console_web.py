@@ -55,6 +55,42 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
     assert 'name="action" value="retry"' in html
 
 
+def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "task-1" / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_group": {
+                "session_key": "feishu:oc_group",
+                "chat_id": "oc_group",
+                "chat_name": "项目群",
+                "session_title": "第二阶段汇报材料",
+                "last_task_id": "task-1",
+            }
+        },
+    )
+
+    html = render_console_html(tasks_root, tmp_path / "events")
+
+    assert "<details" in html
+    assert "<summary" in html
+    assert "项目群" in html
+    assert "第二阶段汇报材料" in html
+    assert 'name="action" value="rename_session"' in html
+    assert 'name="action" value="delete_session"' in html
+    assert "more_horiz" in html
+
+
 def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> None:
     tasks_root = tmp_path / "tasks"
 
@@ -98,3 +134,74 @@ def test_handle_console_action_retries_task(tmp_path: Path) -> None:
 
     assert message == "已重新启动任务 task-1"
     assert seen == {"task_dir": task_dir, "generator": "local", "publish": True}
+
+
+def test_handle_console_action_renames_and_archives_session(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "task-1" / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_group": {
+                "session_key": "feishu:oc_group",
+                "chat_id": "oc_group",
+                "chat_name": "项目群",
+                "last_task_id": "task-1",
+            }
+        },
+    )
+
+    assert handle_console_action(
+        tasks_root,
+        {
+            "action": "rename_session",
+            "task_id": "task-1",
+            "session_key": "feishu:oc_group",
+            "session_title": "预算材料整理",
+        },
+    ) == "已重命名会话 预算材料整理"
+
+    bindings = json.loads((tasks_root / "task-bindings.json").read_text(encoding="utf-8"))
+    assert bindings["feishu:oc_group"]["session_title"] == "预算材料整理"
+
+    assert handle_console_action(
+        tasks_root,
+        {"action": "delete_session", "task_id": "task-1", "session_key": "feishu:oc_group"},
+    ) == "已归档会话 task-1"
+
+    assert not (tasks_root / "task-1").exists()
+    assert (tasks_root / ".archived" / "task-1" / "status.json").exists()
+    assert json.loads((tasks_root / "task-bindings.json").read_text(encoding="utf-8")) == {}
+
+
+def test_handle_console_action_renames_unbound_task_by_creating_local_session(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "task-1" / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+
+    message = handle_console_action(
+        tasks_root,
+        {"action": "rename_session", "task_id": "task-1", "session_title": "本地整理任务"},
+    )
+
+    assert message == "已重命名会话 本地整理任务"
+    bindings = json.loads((tasks_root / "task-bindings.json").read_text(encoding="utf-8"))
+    assert bindings["local:task-1"]["last_task_id"] == "task-1"
+    assert bindings["local:task-1"]["session_title"] == "本地整理任务"

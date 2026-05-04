@@ -89,7 +89,7 @@ def build_server(
                     event_dir,
                     flash=flash,
                     selected_task_id=stay,
-                    search_query="",
+                    search_query=form.get("q", ""),
                 )
             except Exception:
                 html = _error_page_html(traceback.format_exc())

@@ -18,6 +18,9 @@ class TaskSummary:
     summary: str
     artifact_outputs: tuple[tuple[str, str], ...]
     session_key: str
+    session_title: str
+    chat_name: str
+    chat_id: str
     codex_thread_id: str
     active_turn_id: str
     control_count: int
@@ -72,6 +75,9 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
         summary=str(artifacts.get("summary") or ""),
         artifact_outputs=tuple(_artifact_outputs(artifacts)),
         session_key=str(binding.get("session_key") or ""),
+        session_title=str(binding.get("session_title") or ""),
+        chat_name=str(binding.get("chat_name") or ""),
+        chat_id=str(binding.get("chat_id") or ""),
         codex_thread_id=str(binding.get("codex_thread_id") or ""),
         active_turn_id=str(binding.get("active_turn_id") or ""),
         control_count=control_count,
