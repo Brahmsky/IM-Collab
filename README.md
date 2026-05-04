@@ -340,7 +340,17 @@ rtk .venv/bin/python scripts/task_console.py --plain --limit 5
 rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --port 8765
 ```
 
-打开终端输出的 URL 后，可以查看任务、thread/turn、控制队列，并执行 append、interrupt、retry、ack。
+若 **`tasks/` 里没有任务**或从 **`scripts/` 子目录启动**导致读不到任务目录，可加 **`--ensure-demo`** 自动写入示例任务 `demo-local-smoke`（含会话绑定）；启动后终端会多打一行 **`示例任务页: http://127.0.0.1:<端口>/?task=demo-local-smoke`**。`--tasks-root` / `--event-dir` 的**相对路径一律相对仓库根目录解析**，不依赖当前工作目录。
+
+```bash
+rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --ensure-demo
+```
+
+默认端口为 **8765**；若占用可改 `--port`，或在启动前设置环境变量 **`IM_COLLAB_CONSOLE_PORT`**（1–65535 的整数；显式传入 `--port` 时优先于环境变量）。例如 PowerShell：`$env:IM_COLLAB_CONSOLE_PORT=9876`。
+
+打开终端输出的 URL 后，使用与 `GUI/code.html` 同系的 **Tailwind + Material Symbols** 三栏 cockpit：左侧按会话分组任务，中间为进度与追加指令，右侧为详情与打断/确认/重试；可查看 thread/turn、控制队列与 append/interrupt/retry/ack。可用 `/?task=<task_id>` 直达某任务，`?q=` 搜索过滤。
+
+**打不开页面时**：请用终端里**第一行** `http://127.0.0.1:端口`（不要用 `https://`）。若只在远程/容器里跑了脚本，浏览器在你自己电脑上时，`127.0.0.1` 指向的是你的电脑而不是远程机，需要在 Cursor/SSH 里做**端口转发**，或改用 `python scripts/task_console_web.py --host 0.0.0.0 --port …` 后访问该环境的局域网 IP。Windows 上若 `localhost` 曾无法连接，可改用 `127.0.0.1`；当前脚本在默认环回上会尽量启用 IPv6 双栈以减少该问题。
 
 只看失败：
 
@@ -527,7 +537,7 @@ rtk cat tasks/<task_id>/request.md
 不要 `git add .`。用白名单：
 
 ```bash
-rtk git add README.md .gitignore AGENTS.md bridge docs examples requirements-dev.txt scripts skills tests 落地方案.md
+rtk git add README.md .gitignore AGENTS.md bridge docs examples GUI requirements-dev.txt scripts skills tests 落地方案.md
 ```
 
 提交前：
