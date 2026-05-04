@@ -88,7 +88,13 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "第二阶段汇报材料" in html
     assert 'name="action" value="rename_session"' in html
     assert 'name="action" value="delete_session"' in html
-    assert "more_horiz" in html
+    assert "more_vert" in html
+    assert "session-rename-toggle" in html
+    assert "session-rename-inline" in html
+    assert 'data-session-group="项目群"' in html
+    assert "im-collab-cockpit-open-groups" in html
+    assert "edit" in html
+    assert "delete" in html
 
 
 def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> None:

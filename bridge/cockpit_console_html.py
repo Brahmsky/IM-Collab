@@ -213,28 +213,24 @@ def _session_display_title(t: TaskSummary) -> str:
 def _session_menu_html(t: TaskSummary, search_query: str) -> str:
     tid = escape(t.task_id)
     session_key = escape(t.session_key or "")
-    title = escape(_session_display_title(t), quote=True)
     q = escape(search_query, quote=True)
     return f"""<details class="relative session-actions opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-<summary class="list-none w-7 h-7 rounded-md hover:bg-white/80 flex items-center justify-center cursor-pointer text-text-secondary" aria-label="会话操作">
-<span class="material-symbols-outlined text-[18px]">more_horiz</span>
+<summary class="list-none w-7 h-7 rounded-md hover:bg-white/80 flex items-center justify-center cursor-pointer text-text-secondary" aria-label="会话操作" title="会话操作">
+<span class="material-symbols-outlined text-[18px]">more_vert</span>
 </summary>
-<div class="absolute right-0 top-full mt-1 w-56 bg-white border border-border rounded-lg shadow-lg p-2 z-50">
-<form method="post" class="space-y-2">
-<input type="hidden" name="action" value="rename_session">
+<div class="absolute right-0 top-full mt-1 w-36 bg-white border border-border rounded-lg shadow-lg p-1.5 z-50 text-[13px]">
+<label for="rename-{tid}" class="flex items-center gap-2 rounded-md px-2 py-2 text-text-primary hover:bg-surface-hover cursor-pointer">
+<span class="material-symbols-outlined text-[17px] text-text-primary">edit</span><span>重命名</span>
+</label>
+<form method="post">
+<input type="hidden" name="action" value="delete_session">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="session_key" value="{session_key}">
 <input type="hidden" name="redirect_task" value="{tid}">
 <input type="hidden" name="q" value="{q}">
-<label class="block text-[12px] text-text-secondary">重命名</label>
-<input name="session_title" value="{title}" required class="w-full border border-border rounded-md px-2 py-1.5 text-[13px] text-text-primary">
-<button type="submit" class="w-full rounded-md bg-primary text-white px-2 py-1.5 text-[13px] font-medium">保存名称</button>
-</form>
-<form method="post" class="mt-2 pt-2 border-t border-border">
-<input type="hidden" name="action" value="delete_session">
-<input type="hidden" name="task_id" value="{tid}">
-<input type="hidden" name="session_key" value="{session_key}">
-<button type="submit" class="w-full rounded-md px-2 py-1.5 text-[13px] text-error hover:bg-[#FFECE8] text-left">删除 session</button>
+<button type="submit" class="w-full flex items-center gap-2 rounded-md px-2 py-2 text-error hover:bg-[#FFECE8] text-left">
+<span class="material-symbols-outlined text-[17px] text-error">delete</span><span>删除</span>
+</button>
 </form>
 </div>
 </details>"""
@@ -472,6 +468,8 @@ def _shell_head(title: str) -> str:
 <style>
 .material-symbols-outlined {{ font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }}
 details > summary::-webkit-details-marker {{ display: none; }}
+.session-rename-toggle:checked ~ .session-link {{ display: none; }}
+.session-rename-toggle:checked ~ .session-rename-inline {{ display: flex; }}
 </style>
 <script id="tailwind-config">
 tailwind.config = {{
@@ -502,6 +500,28 @@ tailwind.config = {{
   }}
 }};
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {{
+  const storageKey = "im-collab-cockpit-open-groups";
+  let saved = null;
+  try {{ saved = JSON.parse(localStorage.getItem(storageKey) || "null"); }} catch (_err) {{ saved = null; }}
+  const details = Array.from(document.querySelectorAll("[data-session-group]"));
+  if (saved && typeof saved === "object") {{
+    for (const detail of details) {{
+      const key = detail.getAttribute("data-session-group") || "";
+      detail.open = Boolean(saved[key]);
+    }}
+  }}
+  const persist = () => {{
+    const next = {{}};
+    for (const detail of details) {{
+      next[detail.getAttribute("data-session-group") || ""] = detail.open;
+    }}
+    localStorage.setItem(storageKey, JSON.stringify(next));
+  }};
+  for (const detail of details) detail.addEventListener("toggle", persist);
+}});
+</script>
 </head>"""
 
 
@@ -527,28 +547,52 @@ def render_cockpit_document(
         for t in group:
             active = selected is not None and t.task_id == selected.task_id
             bar = (
-                '<div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-r-full"></div>'
+                '<div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 bg-primary rounded-l-full"></div>'
                 if active
                 else ""
             )
-            row_cls = (
-                "flex items-center gap-3 px-3 py-2 rounded-lg text-primary bg-tag-bg-blue cursor-pointer ml-1"
+            row_wrap_cls = (
+                "relative group flex items-center rounded-lg bg-tag-bg-blue text-primary"
                 if active
-                else "flex items-center gap-3 px-3 py-2 rounded-lg text-text-primary hover:bg-surface-hover transition-colors cursor-pointer ml-1"
+                else "relative group flex items-center rounded-lg text-text-primary hover:bg-surface-hover transition-colors"
+            )
+            link_cls = (
+                "session-link flex items-center gap-3 px-3 py-2 text-primary cursor-pointer min-w-0 flex-1 no-underline"
+                if active
+                else "session-link flex items-center gap-3 px-3 py-2 text-text-primary cursor-pointer min-w-0 flex-1 no-underline"
             )
             q_suffix = f"&q={quote(search_query)}" if search_query.strip() else ""
             href = f"/?task={quote(t.task_id, safe='')}{q_suffix}"
             session_title = _session_display_title(t)
             session_menu = _session_menu_html(t, search_query)
+            rename_id = f"rename-{escape(t.task_id)}"
+            tid = escape(t.task_id)
+            session_key = escape(t.session_key or "")
+            title_value = escape(session_title, quote=True)
+            q_value = escape(search_query, quote=True)
             items.append(
-                f"""<div class="relative group flex items-center">{bar}<a class="{row_cls} min-w-0 flex-1" href="{href}" data-task-id="{escape(t.task_id)}">
+                f"""<div class="{row_wrap_cls}">{bar}
+<input id="{rename_id}" class="session-rename-toggle hidden" type="checkbox">
+<a class="{link_cls}" href="{href}" data-task-id="{escape(t.task_id)}">
 <span class="material-symbols-outlined text-[18px] {'text-primary' if active else 'text-text-secondary'}">chat_bubble</span>
 <span class="truncate {'font-medium' if active else ''}">{escape(session_title)}</span>
-</a>{session_menu}</div>"""
+</a>
+<form method="post" class="session-rename-inline hidden items-center gap-1 min-w-0 flex-1 px-2 py-1.5">
+<input type="hidden" name="action" value="rename_session">
+<input type="hidden" name="task_id" value="{tid}">
+<input type="hidden" name="session_key" value="{session_key}">
+<input type="hidden" name="redirect_task" value="{tid}">
+<input type="hidden" name="q" value="{q_value}">
+<input name="session_title" value="{title_value}" required autofocus class="min-w-0 flex-1 rounded-md border border-primary bg-white px-2 py-1 text-[13px] text-text-primary">
+<button type="submit" class="rounded-md bg-primary px-2 py-1 text-[12px] font-medium text-white">保存</button>
+<label for="{rename_id}" class="rounded-md px-1.5 py-1 text-[12px] text-text-secondary hover:bg-white/80 cursor-pointer">取消</label>
+</form>
+{session_menu}</div>"""
             )
         open_attr = " open" if group_open else ""
+        group_key = escape(session_name, quote=True)
         sidebar_links.append(
-            f"""<details class="session-group"{open_attr}>
+            f"""<details class="session-group"{open_attr} data-session-group="{group_key}">
 <summary class="group flex items-center justify-between px-3 py-1.5 text-[12px] font-medium text-text-secondary cursor-pointer rounded-md hover:bg-surface-hover">
 <span class="truncate">{escape(session_name)}</span>
 <span class="material-symbols-outlined text-[16px] transition-transform group-open:rotate-180">expand_more</span>
