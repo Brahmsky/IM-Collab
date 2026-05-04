@@ -348,9 +348,12 @@ rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --ensure-demo
 
 默认端口为 **8765**；若占用可改 `--port`，或在启动前设置环境变量 **`IM_COLLAB_CONSOLE_PORT`**（1–65535 的整数；显式传入 `--port` 时优先于环境变量）。例如 PowerShell：`$env:IM_COLLAB_CONSOLE_PORT=9876`。
 
-打开终端输出的 URL 后，使用与 `GUI/code.html` 同系的 **Tailwind + Material Symbols** 三栏 cockpit：左侧按会话分组任务，中间为进度与追加指令，右侧为详情与打断/确认/重试；可查看 thread/turn、控制队列与 append/interrupt/retry/ack。可用 `/?task=<task_id>` 直达某任务，`?q=` 搜索过滤。
+打开终端输出的 URL 后，使用与 `GUI/code.html` 同系的 **Tailwind + Material Symbols** 三栏 cockpit：左侧按会话分组任务，中间为进度与追加指令，右侧为详情与打断/确认/重试；可查看 thread/turn、控制队列与 append/interrupt/retry/ack。可用 `/?task=<task_id>` 直达某任务，`?q=` 搜索过滤。协作者可见 **`docs/2026-05-04-cockpit-ui-progress.md`**（相对初版的 UI 变更、HTTP 契约与演示说明）。
 
 **打不开页面时**：请用终端里**第一行** `http://127.0.0.1:端口`（不要用 `https://`）。若只在远程/容器里跑了脚本，浏览器在你自己电脑上时，`127.0.0.1` 指向的是你的电脑而不是远程机，需要在 Cursor/SSH 里做**端口转发**，或改用 `python scripts/task_console_web.py --host 0.0.0.0 --port …` 后访问该环境的局域网 IP。Windows 上若 `localhost` 曾无法连接，可改用 `127.0.0.1`；当前脚本在默认环回上会尽量启用 IPv6 双栈以减少该问题。
+
+若 **连接被拒绝 / 一直转圈连不上**：加 **`--ipv4-only`** 仅监听 IPv4（跳过 `::1` 双栈），例如  
+`python scripts/task_console_web.py --ensure-demo --ipv4-only --open`（`--open` 会在本机默认浏览器打开示例任务页）。页面能打开但几乎无样式时，多为 **Tailwind CDN** 被拦截；布局与样式以 Tailwind 为准，排障见 `docs/2026-05-04-cockpit-ui-progress.md`。
 
 只看失败：
 

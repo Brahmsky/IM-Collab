@@ -55,6 +55,8 @@ def build_server(
     port: int,
     tasks_root: Path,
     event_dir: Path,
+    *,
+    ipv4_only: bool = False,
 ) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -105,11 +107,14 @@ def build_server(
             self.wfile.write(body)
 
     if _loopback_host_arg(host):
-        try:
-            return _dualstack_loopback_server(port, Handler)
-        except OSError:
-            pass
-        bind_host = "127.0.0.1"
+        if ipv4_only:
+            bind_host = "127.0.0.1"
+        else:
+            try:
+                return _dualstack_loopback_server(port, Handler)
+            except OSError:
+                pass
+            bind_host = "127.0.0.1"
     else:
         bind_host = host
     return ThreadingHTTPServer((bind_host, port), Handler)
@@ -170,6 +175,16 @@ def main() -> int:
         action="store_true",
         help=f"Create {DEMO_TASK_ID} sample task + bindings if missing (for cockpit preview).",
     )
+    parser.add_argument(
+        "--ipv4-only",
+        action="store_true",
+        help="Listen on 127.0.0.1 only (skip IPv6 dual-stack). Use when connection to localhost fails.",
+    )
+    parser.add_argument(
+        "--open",
+        action="store_true",
+        help="Open the demo task URL in the default browser after the server starts.",
+    )
     parser.add_argument("--print-url", action="store_true", help="Print the URL and exit without serving.")
     args = parser.parse_args()
 
@@ -178,15 +193,35 @@ def main() -> int:
     if args.ensure_demo:
         ensure_local_smoke_demo_task(tasks_root, PROJECT_ROOT)
 
-    server = build_server(args.host, args.port, tasks_root, event_dir)
+    try:
+        server = build_server(
+            args.host,
+            args.port,
+            tasks_root,
+            event_dir,
+            ipv4_only=args.ipv4_only,
+        )
+    except OSError as exc:
+        print(f"监听失败: {exc}", file=sys.stderr)
+        print("可尝试: --ipv4-only  （跳过 IPv6 双栈）或更换 --port。", file=sys.stderr)
+        return 1
+
     port = _effective_tcp_port(server)
     _print_listen_urls(args.host, port)
     demo_status = tasks_root / DEMO_TASK_ID / "status.json"
+    demo_url = f"http://127.0.0.1:{port}/?task={DEMO_TASK_ID}"
     if demo_status.is_file():
-        print(
-            f"示例任务页: http://127.0.0.1:{port}/?task={DEMO_TASK_ID}",
-            flush=True,
-        )
+        print(f"示例任务页: {demo_url}", flush=True)
+    if args.open:
+        import threading
+        import time
+        import webbrowser
+
+        def _browse() -> None:
+            time.sleep(0.45)
+            webbrowser.open(demo_url if demo_status.is_file() else f"http://127.0.0.1:{port}/")
+
+        threading.Thread(target=_browse, daemon=True).start()
     if args.print_url:
         server.server_close()
         return 0
