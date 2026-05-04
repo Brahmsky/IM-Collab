@@ -89,9 +89,13 @@ def _filter_tasks(tasks: list[TaskSummary], q: str) -> list[TaskSummary]:
             [
                 t.task_id,
                 t.session_key or "",
+                t.session_title or "",
+                t.chat_name or "",
+                t.chat_id or "",
                 t.summary or "",
                 t.codex_thread_id or "",
                 t.state or "",
+                " ".join(f"{label} {value}" for label, value in t.artifact_outputs),
             ]
         ).lower()
         if needle in hay:
@@ -144,6 +148,9 @@ def _relative_time_display(iso: str, *, now_iso: str | None = None) -> str:
 
 
 def _cockpit_header_title(t: TaskSummary) -> str:
+    session_title = (t.session_title or "").strip()
+    if session_title:
+        return session_title[:48] + ("…" if len(session_title) > 48 else "")
     raw = (t.summary or "").strip()
     if raw:
         line = raw.split("\n", 1)[0].strip()
@@ -341,13 +348,96 @@ def _artifact_card_main(label: str, value: str) -> str:
 </div>"""
 
 
+def _markdown_section(markdown: str, heading: str) -> str:
+    lines = markdown.splitlines()
+    try:
+        start = lines.index(heading) + 1
+    except ValueError:
+        return ""
+    collected: list[str] = []
+    for line in lines[start:]:
+        if line.startswith("## "):
+            break
+        collected.append(line)
+    return "\n".join(collected).strip()
+
+
+def _task_request_message(t: TaskSummary) -> str:
+    request_path = t.path / "request.md"
+    if not request_path.is_file():
+        return ""
+    markdown = request_path.read_text(encoding="utf-8")
+    section = _markdown_section(markdown, "## User Message")
+    if section:
+        return section
+    lines = [line.strip() for line in markdown.splitlines() if line.strip() and not line.startswith(("session_key:", "chat_id:", "sender_id:"))]
+    return "\n".join(lines[:8]).strip()
+
+
+def _append_instruction_texts(t: TaskSummary, limit: int = 5) -> list[str]:
+    path = t.path / "control.jsonl"
+    if not path.is_file():
+        return []
+    texts: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            command = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if command.get("type") != "append_instruction":
+            continue
+        payload = command.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        text = str(payload.get("text") or "").strip()
+        if text:
+            texts.append(text)
+    return texts[-limit:]
+
+
+def _user_message_bubble_html(text: str) -> str:
+    return f"""<div class="flex justify-end w-full max-w-4xl mx-auto">
+<div class="bg-primary text-white rounded-xl rounded-tr-sm px-4 py-3 max-w-[75%] shadow-sm">
+<p class="text-[14px] leading-relaxed whitespace-pre-wrap">{escape(text)}</p>
+</div>
+</div>"""
+
+
+def _user_bubbles_html(t: TaskSummary) -> str:
+    messages: list[str] = []
+    request = _task_request_message(t)
+    if request:
+        messages.append(request)
+    messages.extend(_append_instruction_texts(t))
+    if not messages:
+        messages.append(t.summary or "根据群聊与指令生成办公交付物。")
+    return "".join(_user_message_bubble_html(message) for message in messages)
+
+
+def _assistant_status_message(t: TaskSummary) -> str:
+    artifact_count = len(t.artifact_outputs)
+    if t.state == "completed":
+        if artifact_count:
+            return f"已完成当前任务，生成 {artifact_count} 个工件。"
+        return "已完成当前任务。"
+    if t.state == "failed":
+        return "任务执行失败，错误信息见下方详情面板。"
+    if t.state == "waiting_for_user":
+        return "我需要补充确认后再继续，确认项和控制记录见右侧详情。"
+    if t.state == "running":
+        return "正在处理当前任务；新的补充会通过同一控制通道追加给执行后端。"
+    return "已收到当前任务，等待执行后会持续同步状态。"
+
+
 def _append_form(task_id: str) -> str:
     tid = escape(task_id)
     return f"""<form method="post" class="max-w-4xl mx-auto bg-white border border-border rounded-xl shadow-sm focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all flex items-end p-2 gap-2">
 <input type="hidden" name="action" value="append">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="redirect_task" value="{tid}">
-<label class="p-2 text-text-secondary shrink-0 cursor-not-allowed opacity-70" title="MVP：附件请通过飞书 IM 发送；此处仅文本追加">
+<label class="p-2 text-text-secondary shrink-0 cursor-not-allowed opacity-70" title="附件请通过飞书会话发送">
 <input type="file" class="hidden" disabled tabindex="-1"/>
 <span class="material-symbols-outlined text-[20px]">attach_file</span>
 </label>
@@ -673,7 +763,7 @@ def render_cockpit_document(
 <div class="flex-1 flex items-center justify-center p-10">
 <div class="max-w-md text-center border border-dashed border-border rounded-2xl bg-white p-10">
 <h2 class="text-[18px] font-semibold text-text-primary mb-2">暂无任务</h2>
-<p class="text-[14px] text-text-secondary">请先运行本地 demo，或从飞书 IM 触发任务。</p>
+<p class="text-[14px] text-text-secondary">请先从飞书会话触发任务。</p>
 <p class="text-[12px] text-text-tertiary mt-4">IM 事件：{events.total}</p>
 </div>
 </div>"""
@@ -692,9 +782,10 @@ def render_cockpit_document(
         inspector_column = aside_placeholder
     else:
         t = selected
-        summary = escape(t.summary or "根据群聊与指令生成办公交付物。")
         badge = f'<span class="px-2 py-0.5 rounded text-[12px] font-medium bg-tag-bg-gray text-text-secondary">{escape(_state_label_en(t.state))}</span>'
         header_title = _cockpit_header_title(t)
+        user_bubbles = _user_bubbles_html(t)
+        assistant_message = escape(_assistant_status_message(t))
 
         checklist = "".join(
             [
@@ -740,18 +831,14 @@ def render_cockpit_document(
 {_main_header_tools(t.task_id)}
 </header>
 <div class="flex-1 overflow-y-auto p-6 space-y-6 pb-32">
-<div class="flex justify-end w-full max-w-4xl mx-auto">
-<div class="bg-primary text-white rounded-xl rounded-tr-sm px-4 py-3 max-w-[75%] shadow-sm">
-<p class="text-[14px] leading-relaxed">{summary}</p>
-</div>
-</div>
+{user_bubbles}
 <div class="flex justify-start w-full max-w-4xl mx-auto gap-3">
 <div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
 <span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
 </div>
 <div class="space-y-3 w-full max-w-[85%]">
 <div class="bg-white border border-border rounded-xl rounded-tl-sm p-4 shadow-sm">
-<p class="text-[14px] text-text-primary mb-3">收到，正在为你梳理并生成相关材料，执行计划如下：</p>
+<p class="text-[14px] text-text-primary mb-3">{assistant_message}</p>
 <div class="space-y-2">{checklist}</div>
 </div>
 <div class="grid grid-cols-2 gap-3">{artifact_cards}</div>
@@ -800,29 +887,12 @@ def render_cockpit_document(
 <span class="material-symbols-outlined text-[18px]">add</span>
 <span>新建任务</span>
 </button>
-<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-primary hover:bg-surface-hover transition-colors duration-150 cursor-pointer no-underline text-inherit" href="#" title="扩展能力由 Codex / MCP / lark-cli 提供；详见仓库 README">
-<span class="material-symbols-outlined text-[18px] text-text-secondary">extension</span>
-<span>插件</span>
-</a>
-<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-primary hover:bg-surface-hover transition-colors duration-150 cursor-pointer no-underline text-inherit" href="#" title="编排由 Bridge + Codex 执行；详见 README 后续开发流程">
-<span class="material-symbols-outlined text-[18px] text-text-secondary">settings_suggest</span>
-<span>自动化</span>
-</a>
 </div>
 <div class="flex-1 overflow-y-auto px-3">
 <div class="px-3 pb-2 text-[12px] font-medium text-text-secondary">任务</div>
 <div class="space-y-5">{sidebar_body}</div>
 </div>
-<div class="px-3 pt-3 border-t border-border space-y-0.5 mt-auto">
-<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-primary hover:bg-surface-hover transition-colors duration-150 cursor-pointer ml-1 no-underline text-inherit" href="#" title="打开仓库根目录 README.md">
-<span class="material-symbols-outlined text-[18px] text-text-secondary">help</span>
-<span>帮助</span>
-</a>
-<a class="flex items-center gap-3 px-3 py-2 rounded-lg text-text-primary hover:bg-surface-hover transition-colors duration-150 cursor-pointer ml-1 no-underline text-inherit" href="#" title="环境变量与配置见 README「环境」章节">
-<span class="material-symbols-outlined text-[18px] text-text-secondary">settings</span>
-<span>设置</span>
-</a>
-</div>
+<div class="px-3 pt-3 border-t border-border space-y-0.5 mt-auto"></div>
 </nav>
 <main class="flex-1 ml-[256px] mr-[320px] flex flex-col h-screen bg-background relative z-0">
 {main_column}
@@ -833,12 +903,10 @@ def render_cockpit_document(
 <dialog id="im-collab-new-task" style="max-width:420px;border:1px solid #DEE0E3;border-radius:12px;padding:0;">
 <div style="padding:18px 20px 8px;">
 <h3 style="margin:0 0 8px;font-size:16px;color:#1F2329;">新建办公任务</h3>
-<p style="margin:0;font-size:14px;color:#424655;line-height:1.6;">请在 <strong>飞书群 / 单聊</strong> 中 <strong>@ 机器人</strong> 发送自然语言需求；或在终端运行：</p>
-<pre style="background:#F5F6F7;border:1px solid #DEE0E3;border-radius:8px;padding:10px;font-size:12px;overflow:auto;">python scripts/run_golembot_office_task.py --message &quot;…&quot; --generator local</pre>
-<p style="margin:12px 0 0;font-size:12px;color:#8F959E;">本 Web 控制台负责任务观测与追加指令，不作为任务创建入口。</p>
+<p style="margin:0;font-size:14px;color:#424655;line-height:1.6;">请在 <strong>飞书群 / 单聊</strong> 中 <strong>@ 机器人</strong> 发送自然语言需求。任务开始后，这里会同步展示进度、工件和后续指令。</p>
 </div>
 <form method="dialog" style="padding:0 20px 16px;display:flex;justify-content:flex-end;">
-<button type="submit" style="padding:8px 16px;border-radius:8px;background:#3370FF;color:#fff;border:none;font-weight:600;cursor:pointer;">知道了</button>
+<button type="submit" style="padding:8px 16px;border-radius:8px;background:#3370FF;color:#fff;border:none;font-weight:600;cursor:pointer;">关闭</button>
 </form>
 </dialog>
 </body></html>"""

@@ -45,18 +45,22 @@ def handle_console_action(
         append_control_command(
             task_dir,
             "append_instruction",
-            {"text": _required(form, "text")},
+            {
+                "source": "gui",
+                "kind": "operator_followup",
+                "text": _required(form, "text"),
+            },
             operator="operator",
         )
-        return f"已为任务 {task_id} 追加指令"
+        return ""
 
     if action == "interrupt":
         append_control_command(task_dir, "interrupt", {}, operator="operator")
-        return f"已向任务 {task_id} 发送打断指令"
+        return ""
 
     if action == "ack":
         ack_task(task_dir, operator="operator", note=form.get("note", ""))
-        return f"已确认任务 {task_id}"
+        return ""
 
     if action == "retry":
         retry(
@@ -64,7 +68,7 @@ def handle_console_action(
             generator=form.get("generator") or "local",
             publish=form.get("publish") in {"1", "true", "on"},
         )
-        return f"已重新启动任务 {task_id}"
+        return ""
 
     if action == "rename_session":
         title = _required(form, "session_title")
@@ -73,7 +77,7 @@ def handle_console_action(
 
     if action == "delete_session":
         _delete_session(tasks_root, task_id, form.get("session_key", ""))
-        return f"已归档会话 {task_id}"
+        return ""
 
     raise ValueError(f"unsupported action: {action}")
 

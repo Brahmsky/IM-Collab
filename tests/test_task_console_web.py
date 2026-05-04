@@ -68,6 +68,30 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
             "error": None,
         },
     )
+    (tasks_root / "task-1" / "request.md").write_text(
+        "session_key: feishu:oc_group\n"
+        "chat_id: oc_group\n"
+        "sender_id: ou_user\n\n"
+        "## User Message\n"
+        "请根据项目群整理第二阶段材料，并生成 PPT 大纲。\n",
+        encoding="utf-8",
+    )
+    (tasks_root / "task-1" / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "type": "append_instruction",
+                "operator": "operator",
+                "payload": {
+                    "source": "gui",
+                    "kind": "operator_followup",
+                    "text": "补充团队分工说明。",
+                },
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     write_json(
         tasks_root / "task-2" / "status.json",
         {
@@ -116,6 +140,11 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "border-l border-border" in html
     assert "session-time" in html
     assert "group-hover:hidden group-focus-within:hidden" in html
+    assert '<h2 class="text-[16px] font-semibold text-text-primary truncate">第二阶段汇报材料</h2>' in html
+    assert "请根据项目群整理第二阶段材料，并生成 PPT 大纲。" in html
+    assert "补充团队分工说明。" in html
+    assert "已完成当前任务" in html
+    assert "收到，正在为你梳理并生成相关材料" not in html
     assert "edit" in html
     assert "delete" in html
     assert "保存</button>" not in html
@@ -124,18 +153,61 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "bg-primary rounded-l-full" not in html
 
 
+def test_render_console_html_searches_human_session_fields_and_artifacts(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "task-1" / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "task-1" / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "生成经费申请材料",
+            "next_steps": [],
+            "items": [{"id": "budget", "kind": "document", "path": "tasks/task-1/budget.md", "title": "经费预算表"}],
+        },
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_budget": {
+                "session_key": "feishu:oc_budget",
+                "chat_id": "oc_budget",
+                "chat_name": "经费申请群",
+                "session_title": "预算材料整理",
+                "last_task_id": "task-1",
+            }
+        },
+    )
+
+    assert "预算材料整理" in render_console_html(tasks_root, tmp_path / "events", search_query="预算")
+    assert "经费申请群" in render_console_html(tasks_root, tmp_path / "events", search_query="经费申请")
+    assert "经费预算表" in render_console_html(tasks_root, tmp_path / "events", search_query="预算表")
+
+
+def test_render_console_html_does_not_expose_clickable_fake_sidebar_links(tmp_path: Path) -> None:
+    html = render_console_html(tmp_path / "tasks", tmp_path / "events")
+
+    assert 'href="#"' not in html
+    assert "MVP" not in html
+    assert "demo" not in html.lower()
+    assert "尚未接入" not in html
+    assert "python scripts/" not in html
+
+
 def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> None:
     tasks_root = tmp_path / "tasks"
 
-    assert handle_console_action(tasks_root, {"action": "append", "task_id": "task-1", "text": "补充"}) == (
-        "已为任务 task-1 追加指令"
-    )
-    assert handle_console_action(tasks_root, {"action": "interrupt", "task_id": "task-1"}) == (
-        "已向任务 task-1 发送打断指令"
-    )
-    assert handle_console_action(tasks_root, {"action": "ack", "task_id": "task-1", "note": "已确认"}) == (
-        "已确认任务 task-1"
-    )
+    assert handle_console_action(tasks_root, {"action": "append", "task_id": "task-1", "text": "补充"}) == ""
+    assert handle_console_action(tasks_root, {"action": "interrupt", "task_id": "task-1"}) == ""
+    assert handle_console_action(tasks_root, {"action": "ack", "task_id": "task-1", "note": "已确认"}) == ""
 
     commands = [
         json.loads(line)
@@ -143,6 +215,8 @@ def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> No
     ]
     assert commands[0]["type"] == "append_instruction"
     assert commands[0]["payload"]["text"] == "补充"
+    assert commands[0]["payload"]["source"] == "gui"
+    assert commands[0]["payload"]["kind"] == "operator_followup"
     assert commands[1]["type"] == "interrupt"
     assert "已确认" in (tasks_root / "task-1" / "ack.json").read_text(encoding="utf-8")
 
@@ -165,7 +239,7 @@ def test_handle_console_action_retries_task(tmp_path: Path) -> None:
         retry=fake_retry,
     )
 
-    assert message == "已重新启动任务 task-1"
+    assert message == ""
     assert seen == {"task_dir": task_dir, "generator": "local", "publish": True}
 
 
@@ -209,7 +283,7 @@ def test_handle_console_action_renames_and_archives_session(tmp_path: Path) -> N
     assert handle_console_action(
         tasks_root,
         {"action": "delete_session", "task_id": "task-1", "session_key": "feishu:oc_group"},
-    ) == "已归档会话 task-1"
+    ) == ""
 
     assert not (tasks_root / "task-1").exists()
     assert (tasks_root / ".archived" / "task-1" / "status.json").exists()
