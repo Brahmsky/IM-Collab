@@ -142,7 +142,7 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "group-hover:hidden group-focus-within:hidden" in html
     assert '<h2 class="text-[16px] font-semibold text-text-primary truncate">第二阶段汇报材料</h2>' in html
     assert 'data-role="chat-message-user"' in html
-    assert 'data-role="chat-message-assistant"' in html
+    assert 'data-role="assistant-response"' in html
     assert 'data-role="pending-reply-marker"' in html
     assert "请根据项目群整理第二阶段材料，并生成 PPT 大纲。" in html
     assert "补充团队分工说明。" in html

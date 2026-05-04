@@ -24,6 +24,7 @@ from bridge.console_demo_seed import (
     resolve_repo_relative_path,
 )
 from bridge.cockpit_console_html import (
+    render_assistant_bubble_fragment,
     render_pending_reply_marker_fragment,
     render_task_chat_fragment,
     render_user_chat_message_fragment,
@@ -233,6 +234,8 @@ def _task_stream_payload(tasks_root: Path, task_id: str) -> dict[str, object]:
         "done": selected.state in {"failed", "waiting_for_user"} or (selected.state == "completed" and not pending_controls),
         "state": selected.state,
         "chat_html": render_task_chat_fragment(selected),
+        "assistant_html": render_assistant_bubble_fragment(selected),
+        "pending_controls": pending_controls,
     }
 
 

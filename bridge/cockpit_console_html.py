@@ -439,7 +439,7 @@ def render_user_chat_message_fragment(text: str) -> str:
 
 
 def _assistant_chat_bubble_html(text: str, checklist: str, artifact_cards: str, err: str) -> str:
-    return f"""<div data-role="chat-message-assistant" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
+    return f"""<div data-role="assistant-response" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
 <div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
 <span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
 </div>
@@ -462,6 +462,37 @@ def _pending_reply_marker_html() -> str:
 
 def render_pending_reply_marker_fragment() -> str:
     return _pending_reply_marker_html()
+
+
+def _render_checklist_html(t: TaskSummary) -> str:
+    return "".join(
+        [
+            _step_row(t, "context", "读取 IM / 群聊上下文"),
+            _step_row(t, "brief", "生成群聊 brief"),
+            _step_row(t, "execution", "Codex 执行任务"),
+            _step_row(t, "artifacts", "生成交付产物"),
+            _step_row(t, "delivery", "汇总与回传"),
+        ]
+    )
+
+
+def render_assistant_bubble_fragment(t: TaskSummary) -> str:
+    """Render the assistant response bubble (checklist + artifact cards + error).
+
+    Used by SSE to push incremental updates of the assistant block without
+    replacing the entire chat transcript (which would cause artifact cards to
+    "pop up" on every tick).
+    """
+    if not t.summary and t.state != "completed":
+        return ""
+    checklist = _render_checklist_html(t)
+    artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in t.artifact_outputs) or _artifact_card_main(
+        "交付产物",
+        "",
+    )
+    err = f'<p class="text-[13px] text-error mt-2">{escape(t.error)}</p>' if t.error else ""
+    text = t.summary or _workspace_status_message(t)
+    return _assistant_chat_bubble_html(text, checklist, artifact_cards, err)
 
 
 def _chat_transcript_html(t: TaskSummary, checklist: str, artifact_cards: str, err: str) -> str:
@@ -487,15 +518,7 @@ def _chat_transcript_html(t: TaskSummary, checklist: str, artifact_cards: str, e
 
 
 def render_task_chat_fragment(t: TaskSummary) -> str:
-    checklist = "".join(
-        [
-            _step_row(t, "context", "读取 IM / 群聊上下文"),
-            _step_row(t, "brief", "生成群聊 brief"),
-            _step_row(t, "execution", "Codex 执行任务"),
-            _step_row(t, "artifacts", "生成交付产物"),
-            _step_row(t, "delivery", "汇总与回传"),
-        ]
-    )
+    checklist = _render_checklist_html(t)
     artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in t.artifact_outputs) or _artifact_card_main(
         "交付产物",
         "",
@@ -772,6 +795,8 @@ document.addEventListener("DOMContentLoaded", () => {{
     }});
   }}
   let taskStream = null;
+  let _lastAssistantHtml = "";
+  const _pendingMarkerHtml = '<div data-role="pending-reply-marker" class="w-full max-w-4xl mx-auto flex justify-end"><span class="text-[12px] text-text-secondary bg-tag-bg-gray rounded-full px-3 py-1">待回复</span></div>';
   const openTaskStream = (url) => {{
     if (!url || typeof EventSource === "undefined") return;
     if (taskStream) taskStream.close();
@@ -779,10 +804,38 @@ document.addEventListener("DOMContentLoaded", () => {{
     taskStream.onmessage = (event) => {{
       const data = JSON.parse(event.data);
       const chat = document.querySelector("[data-chat-scroll-container='true']");
-      if (chat && data.chat_html) {{
-        chat.innerHTML = data.chat_html;
-        scrollChatToBottom();
+      if (!chat) return;
+      // Update assistant response block only when its content changes
+      if (data.assistant_html !== undefined) {{
+        const currentAssistant = chat.querySelector("[data-role='assistant-response']");
+        if (data.assistant_html !== _lastAssistantHtml) {{
+          if (currentAssistant) {{
+            if (data.assistant_html) {{
+              currentAssistant.outerHTML = data.assistant_html;
+            }} else {{
+              currentAssistant.remove();
+            }}
+          }} else if (data.assistant_html) {{
+            const marker = chat.querySelector("[data-role='pending-reply-marker']");
+            if (marker) {{
+              marker.insertAdjacentHTML("beforebegin", data.assistant_html);
+            }} else {{
+              chat.insertAdjacentHTML("beforeend", data.assistant_html);
+            }}
+          }}
+          _lastAssistantHtml = data.assistant_html;
+        }}
       }}
+      // Update pending reply marker based on control status
+      if (data.pending_controls !== undefined) {{
+        const marker = chat.querySelector("[data-role='pending-reply-marker']");
+        if (data.pending_controls) {{
+          if (!marker) chat.insertAdjacentHTML("beforeend", _pendingMarkerHtml);
+        }} else {{
+          if (marker) marker.remove();
+        }}
+      }}
+      scrollChatToBottom();
       if (data.done && taskStream) {{
         taskStream.close();
         taskStream = null;
@@ -952,15 +1005,7 @@ def render_cockpit_document(
         badge = _display_state_badge_html(t)
         header_title = _cockpit_header_title(t)
 
-        checklist = "".join(
-            [
-                _step_row(t, "context", "读取 IM / 群聊上下文"),
-                _step_row(t, "brief", "生成群聊 brief"),
-                _step_row(t, "execution", "Codex 执行任务"),
-                _step_row(t, "artifacts", "生成交付产物"),
-                _step_row(t, "delivery", "汇总与回传"),
-            ]
-        )
+        checklist = _render_checklist_html(t)
         arts = t.artifact_outputs
         artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in arts) or _artifact_card_main(
             "交付产物",
