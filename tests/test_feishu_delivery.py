@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from bridge.feishu_delivery import deliver_task_to_feishu, publish_task_artifacts_to_feishu
+from bridge.feishu_delivery import _local_artifact_path, deliver_task_to_feishu, publish_task_artifacts_to_feishu
 from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_protocol import create_task, read_artifacts
 
@@ -118,3 +118,13 @@ def test_publish_task_artifacts_to_feishu_does_not_reply(tmp_path: Path) -> None
     assert delivery_card["header"]["title"]["content"] == "材料已生成"
     assert "doc_url" in str(delivery_card)
     assert not any(call[:3] == ["lark-cli", "im", "+messages-reply"] for call in calls)
+
+
+def test_local_artifact_path_accepts_repo_relative_task_path(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "task-1", "Generate a reply.")
+    reply = task_dir / "reply.md"
+    reply.write_text("ok\n", encoding="utf-8")
+
+    resolved = _local_artifact_path(task_dir, {"kind": "message", "path": "tasks/task-1/reply.md"})
+
+    assert resolved == reply

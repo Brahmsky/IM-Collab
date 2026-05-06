@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable
 
-from bridge.artifacts import artifact_items, local_path, upsert_item
+from bridge.artifacts import artifact_items, resolve_local_path, upsert_item
 from bridge.lark_docs import create_doc_from_markdown
 from bridge.lark_im import build_delivery_card, reply_card_to_message
 from bridge.lark_slides import create_slides_from_markdown
@@ -146,10 +146,7 @@ def _first_item(items: list[dict[str, Any]], *kinds: str) -> dict[str, Any] | No
 def _local_artifact_path(task_dir: Path, item: dict[str, Any] | None) -> Path | None:
     if item is None:
         return None
-    path = local_path(item)
-    if path is None:
-        return None
-    return path if path.is_absolute() else task_dir / path
+    return resolve_local_path(item, task_dir=task_dir)
 
 
 def _artifact_title(artifacts: dict[str, Any], item: dict[str, Any], fallback: str) -> str:

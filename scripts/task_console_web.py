@@ -24,11 +24,13 @@ from bridge.console_demo_seed import (
     resolve_repo_relative_path,
 )
 from bridge.cockpit_console_html import (
+    render_assistant_typing_fragment,
     render_assistant_bubble_fragment,
     render_pending_reply_marker_fragment,
     render_task_chat_fragment,
     render_user_chat_message_fragment,
 )
+from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, StdioAppServerTransport
 from bridge.task_control import read_control_commands
 from bridge.task_console_web import handle_console_action, render_console_html
 from bridge.task_index import build_task_index
@@ -77,7 +79,7 @@ def build_server(
     followup_runner: FollowupRunner | None = None,
     run_followup_in_background: bool = True,
 ) -> ThreadingHTTPServer:
-    followup_runner = followup_runner or _run_codex_app_server_followup
+    followup_runner = followup_runner or _make_codex_app_server_followup_runner(PROJECT_ROOT)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -111,17 +113,7 @@ def build_server(
             except Exception as exc:
                 flash = f"error: {exc}"
             stay = (form.get("redirect_task") or form.get("task_id") or "").strip() or None
-            try:
-                html = render_console_html(
-                    tasks_root,
-                    event_dir,
-                    flash=flash,
-                    selected_task_id=stay,
-                    search_query=form.get("q", ""),
-                )
-            except Exception:
-                html = _error_page_html(traceback.format_exc())
-            self._send_html(html)
+            self._redirect_after_post(stay, form.get("q", ""), flash)
 
         def log_message(self, format: str, *args: object) -> None:
             return
@@ -147,6 +139,7 @@ def build_server(
                     "backend": backend,
                     "message_html": render_user_chat_message_fragment(form.get("text", "")),
                     "pending_marker_html": render_pending_reply_marker_fragment(),
+                    "typing_html": render_assistant_typing_fragment(),
                     "stream_url": f"/api/task-stream?task={quote(form.get('task_id', ''), safe='')}",
                 }
                 self._send_json(payload)
@@ -182,6 +175,22 @@ def build_server(
             self.end_headers()
             self.wfile.write(body)
 
+        def _redirect_after_post(self, task_id: str | None, q: str, flash: str) -> None:
+            params = []
+            if task_id:
+                params.append(("task", task_id))
+            if q:
+                params.append(("q", q))
+            if flash:
+                params.append(("flash", flash))
+            location = "/"
+            if params:
+                location += "?" + "&".join(f"{quote(key, safe='')}={quote(value, safe='')}" for key, value in params)
+            self.send_response(303)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
         def _send_html(self, html: str) -> None:
             body = html.encode("utf-8")
             self.send_response(200)
@@ -204,8 +213,39 @@ def build_server(
     return ThreadingHTTPServer((bind_host, port), Handler)
 
 
-def _run_codex_app_server_followup(task_dir: Path) -> None:
-    retry_golembot_task(task_dir, generator="app-server", publish=False)
+class _SharedCodexAppServerFollowupRunner:
+    def __init__(self, project_root: Path) -> None:
+        self.project_root = project_root
+        self._lock = threading.Lock()
+        self._transport: StdioAppServerTransport | None = None
+        self._backend: CodexAppServerBackend | None = None
+
+    def __call__(self, task_dir: Path) -> None:
+        with self._lock:
+            retry_golembot_task(
+                task_dir,
+                generator="app-server",
+                publish=False,
+                codex_backend=self._get_backend(),
+            )
+
+    def _get_backend(self) -> CodexAppServerBackend:
+        if self._backend is None:
+            self._transport = StdioAppServerTransport(cwd=self.project_root)
+            client = AppServerClient(self._transport)
+            client.initialize()
+            self._backend = CodexAppServerBackend(client, project_root=self.project_root)
+        return self._backend
+
+    def close(self) -> None:
+        if self._transport is not None:
+            self._transport.close()
+            self._transport = None
+            self._backend = None
+
+
+def _make_codex_app_server_followup_runner(project_root: Path) -> _SharedCodexAppServerFollowupRunner:
+    return _SharedCodexAppServerFollowupRunner(project_root)
 
 
 def _trigger_real_codex_backend(

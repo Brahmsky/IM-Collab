@@ -27,6 +27,42 @@ def local_path(item: dict[str, Any]) -> Path | None:
     return Path(str(path)) if path else None
 
 
+def resolve_local_path(
+    item: dict[str, Any],
+    *,
+    task_dir: Path | None = None,
+    project_root: Path | None = None,
+) -> Path | None:
+    path = local_path(item)
+    if path is None:
+        return None
+    if path.is_absolute():
+        return path
+
+    candidates: list[Path] = []
+    if task_dir is not None and len(path.parts) >= 2 and path.parts[0] == "tasks" and path.parts[1] == task_dir.name:
+        candidates.append(task_dir.joinpath(*path.parts[2:]))
+    if task_dir is not None:
+        candidates.append(task_dir / path)
+
+    roots: list[Path] = []
+    if project_root is not None:
+        roots.append(project_root)
+    if task_dir is not None and task_dir.parent.name == "tasks":
+        roots.append(task_dir.parent.parent)
+    roots.append(Path.cwd())
+
+    for root in roots:
+        candidate = root / path
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else path
+
+
 def remote_url(item: dict[str, Any]) -> str:
     remote = item.get("remote")
     if isinstance(remote, dict):

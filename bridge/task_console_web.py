@@ -6,9 +6,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from bridge.cockpit_console_html import render_cockpit_document
+from bridge.chat_messages import append_chat_message, seed_chat_messages_from_task
 from bridge.task_control import append_control_command
 from bridge.task_index import build_task_index, summarize_events
 from bridge.task_ops import ack_task, retry_golembot_task
+from bridge.task_protocol import read_artifacts, read_status
 
 RetryFunc = Callable[..., dict[str, Any]]
 
@@ -42,6 +44,12 @@ def handle_console_action(
     task_dir = tasks_root / task_id
 
     if action == "append":
+        seed_chat_messages_from_task(
+            task_dir,
+            created_at=str(_safe_status(task_dir).get("created_at") or ""),
+            assistant_text=str(_safe_artifacts(task_dir).get("summary") or ""),
+        )
+        append_chat_message(task_dir, "user", _required(form, "text"), source="gui")
         append_control_command(
             task_dir,
             "append_instruction",
@@ -80,6 +88,20 @@ def handle_console_action(
         return ""
 
     raise ValueError(f"unsupported action: {action}")
+
+
+def _safe_status(task_dir: Path) -> dict[str, Any]:
+    try:
+        return read_status(task_dir)
+    except Exception:
+        return {}
+
+
+def _safe_artifacts(task_dir: Path) -> dict[str, Any]:
+    try:
+        return read_artifacts(task_dir)
+    except Exception:
+        return {}
 
 
 def _required(form: dict[str, str], key: str) -> str:

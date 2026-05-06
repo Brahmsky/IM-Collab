@@ -88,6 +88,7 @@ def test_codex_app_server_backend_starts_thread_and_turn_for_task(tmp_path: Path
     assert thread_start["method"] == "thread/start"
     assert thread_start["params"]["cwd"] == "/repo"
     assert thread_start["params"]["approvalPolicy"] == "never"
+    assert thread_start["params"]["experimentalRawEvents"] is True
     assert turn_start["method"] == "turn/start"
     assert turn_start["params"]["threadId"] == "thread_123"
     assert turn_start["params"]["cwd"] == "/repo"
@@ -112,6 +113,22 @@ def test_codex_app_server_backend_reads_nested_turn_id_from_start_response(tmp_p
     assert result.turn_id == "turn_nested"
 
 
+def test_codex_app_server_backend_reads_nested_thread_id_from_start_response(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    transport = FakeLineTransport(
+        [
+            {"id": 1, "result": {"thread": {"id": "thread_nested", "status": "ready"}}},
+            {"id": 2, "result": {"turn": {"id": "turn_nested", "status": "running"}}},
+        ]
+    )
+    backend = CodexAppServerBackend(AppServerClient(transport), project_root=Path("/repo"))
+
+    result = backend.start_task(task_dir)
+
+    assert result.thread_id == "thread_nested"
+    assert result.turn_id == "turn_nested"
+
+
 def test_codex_app_server_backend_reuses_existing_thread_for_followup_task(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_456", "把 PPT 改成 5 分钟答辩版。")
     transport = FakeLineTransport(
@@ -130,6 +147,27 @@ def test_codex_app_server_backend_reuses_existing_thread_for_followup_task(tmp_p
     assert [write["method"] for write in writes] == ["thread/resume", "turn/start"]
     assert writes[0]["params"]["threadId"] == "thread_existing"
     assert writes[1]["params"]["threadId"] == "thread_existing"
+
+
+def test_codex_app_server_backend_starts_new_thread_when_resume_rollout_is_missing(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_456", "把 PPT 改成 5 分钟答辩版。")
+    transport = FakeLineTransport(
+        [
+            {"id": 1, "error": {"message": "no rollout found for thread id thread_stale"}},
+            {"id": 2, "result": {"threadId": "thread_new"}},
+            {"id": 3, "result": {"turn": {"id": "turn_followup", "status": "running"}}},
+        ]
+    )
+    backend = CodexAppServerBackend(AppServerClient(transport), project_root=Path("/repo"))
+
+    result = backend.start_task(task_dir, thread_id="thread_stale")
+
+    assert result.thread_id == "thread_new"
+    assert result.turn_id == "turn_followup"
+    writes = [json.loads(line) for line in transport.writes]
+    assert [write["method"] for write in writes] == ["thread/resume", "thread/start", "turn/start"]
+    assert writes[0]["params"]["threadId"] == "thread_stale"
+    assert writes[2]["params"]["threadId"] == "thread_new"
 
 
 def test_codex_app_server_backend_can_steer_and_interrupt_active_turn() -> None:
@@ -177,6 +215,24 @@ def test_app_server_client_waits_for_matching_turn_completed_notification() -> N
     result = client.wait_for_turn_completed("thread_123", "turn_456")
 
     assert result["status"] == "completed"
+
+
+def test_app_server_client_forwards_non_completion_events_to_callback() -> None:
+    transport = FakeLineTransport(
+        [
+            {"method": "turn/raw_event", "params": {"text": "正在读取任务目录"}},
+            {
+                "method": "turn/completed",
+                "params": {"threadId": "thread_123", "turn": {"id": "turn_456", "status": "completed"}},
+            },
+        ]
+    )
+    client = AppServerClient(transport)
+    events: list[dict] = []
+
+    client.wait_for_turn_completed("thread_123", "turn_456", on_event=events.append)
+
+    assert events == [{"method": "turn/raw_event", "params": {"text": "正在读取任务目录"}}]
 
 
 def test_app_server_client_raises_when_turn_fails() -> None:
@@ -271,3 +327,111 @@ def test_run_codex_app_server_task_steers_active_turn_from_control_log(tmp_path:
     run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend())
 
     assert seen["steers"] == [("thread_123", "turn_456", "补充移动端发消息的入口")]
+
+
+def test_run_codex_app_server_task_does_not_steer_preexisting_control_log(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    append_control_command(
+        task_dir,
+        "append_instruction",
+        {"text": "启动前已经写入的追问"},
+        operator="gui",
+    )
+    seen: dict[str, object] = {"steers": []}
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+
+        def steer_turn(self, thread_id: str, turn_id: str, text: str):
+            seen["steers"].append((thread_id, turn_id, text))
+            return {"accepted": True}
+
+        def wait_for_task(self, thread_id: str, turn_id: str, on_idle=None):
+            write_codex_outputs(task_dir)
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend())
+
+    assert seen["steers"] == []
+
+
+def test_run_codex_app_server_task_clears_stale_stream_before_new_turn(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+    (task_dir / "codex-stream.jsonl").write_text('{"text":"old"}\n', encoding="utf-8")
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            assert not (task_path / "codex-stream.jsonl").exists()
+            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str, on_idle=None, on_event=None):
+            if on_event:
+                on_event({"method": "turn/raw_event", "params": {"text": "new"}})
+            write_codex_outputs(task_dir)
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend())
+
+    assert "new" in (task_dir / "codex-stream.jsonl").read_text(encoding="utf-8")
+    assert "old" not in (task_dir / "codex-stream.jsonl").read_text(encoding="utf-8")
+
+
+def test_run_codex_app_server_task_writes_stream_events_from_backend(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str, on_idle=None, on_event=None):
+            assert on_event is not None
+            on_event({"method": "turn/raw_event", "params": {"text": "正在读取任务目录"}})
+            write_codex_outputs(task_dir)
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend())
+
+    stream = (task_dir / "codex-stream.jsonl").read_text(encoding="utf-8")
+    assert "正在读取任务目录" in stream
+
+
+def test_run_codex_app_server_task_persists_final_assistant_chat_message(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "请回复 ok。")
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id="thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str):
+            (task_dir / "plan.json").write_text('{"task_id":"im-om_123","steps":[]}\n', encoding="utf-8")
+            (task_dir / "reply.md").write_text("ok\n", encoding="utf-8")
+            (task_dir / "artifacts.json").write_text(
+                json.dumps(
+                    {
+                        "task_id": "im-om_123",
+                        "items": [{"id": "reply", "kind": "message", "path": "reply.md", "text": "ok"}],
+                        "summary": "任务摘要不应该覆盖 message item。",
+                        "next_steps": [],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend())
+
+    chat_log = (task_dir / "chat_messages.jsonl").read_text(encoding="utf-8")
+    assert '"role": "assistant"' in chat_log
+    assert '"text": "ok"' in chat_log
+    assert "任务摘要不应该覆盖" not in chat_log

@@ -1,15 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 
-from bridge.cockpit_console_html import _relative_time_display
+from bridge.cockpit_console_html import _relative_time_display, render_assistant_typing_fragment, render_task_chat_fragment
 from bridge.task_console_web import handle_console_action, render_console_html
+from bridge.task_index import build_task_index
 
 
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def set_mtime(path: Path, iso: str) -> None:
+    ts = datetime.fromisoformat(iso).astimezone(UTC).timestamp()
+    os.utime(path, (ts, ts))
 
 
 def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
@@ -46,13 +54,13 @@ def test_render_console_html_lists_tasks_and_controls(tmp_path: Path) -> None:
     assert "task-1" in html
     assert "running" in html
     assert "tailwindcss.com" in html
-    assert "thread_123" in html
-    assert "turn_456" in html
-    assert "最新操作" in html
-    assert "card_action" in html
+    assert "thread_123" not in html
+    assert "turn_456" not in html
+    assert "最新操作" not in html
+    assert "card_action" not in html
     assert 'name="action" value="append"' in html
-    assert 'name="action" value="interrupt"' in html
-    assert 'name="action" value="retry"' in html
+    assert 'name="action" value="interrupt"' not in html
+    assert 'name="action" value="retry"' not in html
 
 
 def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp_path: Path) -> None:
@@ -67,6 +75,16 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
             "error": None,
         },
     )
+    write_json(
+        tasks_root / "task-1" / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "已整理第二阶段材料，并生成了交付工件。",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "tasks/task-1/document.md", "title": "第二阶段材料"}],
+        },
+    )
+    set_mtime(tasks_root / "task-1" / "artifacts.json", "2026-04-28T01:01:00+00:00")
     (tasks_root / "task-1" / "request.md").write_text(
         "session_key: feishu:oc_group\n"
         "chat_id: oc_group\n"
@@ -100,6 +118,15 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
             "created_at": "2026-04-27T01:00:00+00:00",
             "updated_at": "2026-04-27T01:00:00+00:00",
             "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "task-2" / "artifacts.json",
+        {
+            "task_id": "task-2",
+            "summary": "历史评审材料",
+            "next_steps": [],
+            "items": [{"id": "whiteboard", "kind": "whiteboard", "path": "tasks/task-2/board.md", "title": "产品评审白板"}],
         },
     )
     write_json(
@@ -142,13 +169,15 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "group-hover:hidden group-focus-within:hidden" in html
     assert '<h2 class="text-[16px] font-semibold text-text-primary truncate">第二阶段汇报材料</h2>' in html
     assert 'data-role="chat-message-user"' in html
-    assert 'data-role="assistant-response"' in html
+    assert 'data-role="chat-message-assistant"' in html
+    assert 'data-assistant-response="true"' in html
     assert 'data-role="pending-reply-marker"' in html
     assert "请根据项目群整理第二阶段材料，并生成 PPT 大纲。" in html
     assert "补充团队分工说明。" in html
     assert "待回复" in html
     assert "已完成当前任务" not in html
-    assert html.index("请根据项目群整理第二阶段材料，并生成 PPT 大纲。") < html.index("补充团队分工说明。")
+    assert html.index("请根据项目群整理第二阶段材料，并生成 PPT 大纲。") < html.index("已整理第二阶段材料，并生成了交付工件。")
+    assert html.index("已整理第二阶段材料，并生成了交付工件。") < html.index("补充团队分工说明。")
     assert "smart_toy" in html
     assert "收到，正在为你梳理并生成相关材料" not in html
     assert '<select name="generator"' not in html
@@ -156,11 +185,28 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert ">local</option>" not in html
     assert "打断" not in html
     assert "确认备注" not in html
-    assert "执行补充" in html
+    assert "执行补充" not in html
+    assert "重新执行" not in html
+    assert "状态" not in html
+    assert "来源" not in html
+    assert "任务 ID" not in html
+    assert "运维与同步字段" not in html
+    assert "Codex 线程" not in html
+    assert "控制队列" not in html
+    assert "时间线" not in html
+    assert "control.jsonl" not in html
+    assert "events 目录" not in html
+    assert "创建时间" in html
+    assert "产品评审白板" in html
+    assert "open_in_full" not in html
+    assert "more_horiz" not in html
+    assert "刷新本页" not in html
     assert 'data-submit-on-enter="true"' in html
     assert 'data-async-append="true"' in html
     assert 'data-chat-scroll-container="true"' in html
     assert "fetch(form.action || window.location.href" in html
+    assert "data.chat_html" in html
+    assert "chat.innerHTML = data.chat_html" in html
     assert "event.preventDefault()" in html
     assert "insertAdjacentHTML(\"beforeend\"" in html
     assert "chat.scrollTop = chat.scrollHeight" in html
@@ -215,6 +261,301 @@ def test_render_console_html_searches_human_session_fields_and_artifacts(tmp_pat
     assert "经费预算表" in render_console_html(tasks_root, tmp_path / "events", search_query="预算表")
 
 
+def test_failed_followup_keeps_previous_assistant_card_before_new_user_message(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "failed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:04:00+00:00",
+            "error": "GolemBot office loop failed: codex app-server response missing `threadId`",
+        },
+    )
+    write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "已在本地生成 IM-Collab Agent-Pilot 办公协作项目方案。",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "tasks/task-1/document.md", "title": "document"}],
+        },
+    )
+    set_mtime(task_dir / "artifacts.json", "2026-04-28T01:01:00+00:00")
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n原始请求：生成方案\n",
+        encoding="utf-8",
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:03:00+00:00",
+                "type": "append_instruction",
+                "operator": "operator",
+                "payload": {"source": "gui", "kind": "operator_followup", "text": "你好，回复"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    task = build_task_index(tasks_root)[0]
+    html = render_task_chat_fragment(task)
+
+    assert html.index("原始请求：生成方案") < html.index("已在本地生成 IM-Collab Agent-Pilot 办公协作项目方案。")
+    assert html.index("已在本地生成 IM-Collab Agent-Pilot 办公协作项目方案。") < html.index("你好，回复")
+
+
+def test_running_followup_keeps_previous_assistant_card_before_new_user_message(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "running",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:04:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "已在本地生成 IM-Collab Agent-Pilot 办公协作项目方案。",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "tasks/task-1/document.md", "title": "document"}],
+        },
+    )
+    set_mtime(task_dir / "artifacts.json", "2026-04-28T01:01:00+00:00")
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n原始请求：生成方案\n",
+        encoding="utf-8",
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:03:00+00:00",
+                "type": "append_instruction",
+                "operator": "operator",
+                "payload": {"source": "gui", "kind": "operator_followup", "text": "你好，回复"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    task = build_task_index(tasks_root)[0]
+    html = render_task_chat_fragment(task)
+
+    assert html.index("原始请求：生成方案") < html.index("已在本地生成 IM-Collab Agent-Pilot 办公协作项目方案。")
+    assert html.index("已在本地生成 IM-Collab Agent-Pilot 办公协作项目方案。") < html.index("你好，回复")
+
+
+def test_running_followup_shows_live_assistant_bubble_after_new_user_message(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "running",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:04:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "上一轮已生成方案。",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "tasks/task-1/document.md", "title": "document"}],
+        },
+    )
+    set_mtime(task_dir / "artifacts.json", "2026-04-28T01:01:00+00:00")
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n原始请求\n",
+        encoding="utf-8",
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:03:00+00:00",
+                "type": "append_instruction",
+                "operator": "operator",
+                "payload": {"source": "gui", "kind": "operator_followup", "text": "继续展开"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (task_dir / "codex-stream.jsonl").write_text(
+        json.dumps({"timestamp": "2026-04-28T01:04:10+00:00", "text": "我正在读取现有方案并准备更新。"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+
+    task = build_task_index(tasks_root)[0]
+    html = render_task_chat_fragment(task)
+
+    assert 'data-role="chat-message-assistant-live"' in html
+    assert html.index("继续展开") < html.index("我正在读取现有方案并准备更新。")
+
+
+def test_chat_transcript_uses_append_only_messages_without_task_checklist(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:04:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "这是任务摘要，不应该直接冒充聊天消息。",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "tasks/task-1/document.md", "title": "document"}],
+        },
+    )
+    (task_dir / "chat_messages.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"timestamp": "2026-04-28T01:00:00+00:00", "role": "user", "text": "第一轮问题"}, ensure_ascii=False),
+                json.dumps({"timestamp": "2026-04-28T01:01:00+00:00", "role": "assistant", "text": "第一轮回复"}, ensure_ascii=False),
+                json.dumps({"timestamp": "2026-04-28T01:02:00+00:00", "role": "user", "text": "第二轮问题"}, ensure_ascii=False),
+                json.dumps({"timestamp": "2026-04-28T01:03:00+00:00", "role": "assistant", "text": "第二轮回复"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    task = build_task_index(tasks_root)[0]
+    html = render_task_chat_fragment(task)
+
+    assert html.count('data-role="chat-message-assistant"') == 2
+    assert html.index("第一轮问题") < html.index("第一轮回复") < html.index("第二轮问题") < html.index("第二轮回复")
+    assert "这是任务摘要，不应该直接冒充聊天消息。" not in html
+    assert "读取 IM / 群聊上下文" not in html
+    assert "生成群聊 brief" not in html
+    assert "Codex 执行任务" not in html
+    assert "生成交付产物" not in html
+    assert "汇总与回传" not in html
+
+
+def test_codex_stream_filters_protocol_noise_for_live_bubble(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "running",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:04:00+00:00",
+            "error": None,
+        },
+    )
+    (task_dir / "chat_messages.jsonl").write_text(
+        json.dumps({"timestamp": "2026-04-28T01:03:00+00:00", "role": "user", "text": "介绍一下你能干什么"}, ensure_ascii=False)
+        + "\n",
+        encoding="utf-8",
+    )
+    (task_dir / "codex-stream.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"timestamp": "2026-04-28T01:04:01+00:00", "text": '{"task_id":"task-1","items":[]}'}, ensure_ascii=False),
+                json.dumps({"timestamp": "2026-04-28T01:04:02+00:00", "text": "Success. Updated the following files:\nM /tmp/task/status.json"}, ensure_ascii=False),
+                json.dumps({"timestamp": "2026-04-28T01:04:03+00:00", "text": "正在整理这轮回复。"}, ensure_ascii=False),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    task = build_task_index(tasks_root)[0]
+    html = render_task_chat_fragment(task)
+
+    assert "正在整理这轮回复。" in html
+    assert '{"task_id"' not in html
+    assert "Success. Updated" not in html
+    assert "status.json" not in html
+
+
+def test_failed_followup_keeps_codex_stream_after_new_user_message(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "failed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:04:00+00:00",
+            "error": "artifact validation failed",
+        },
+    )
+    write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "上一轮已生成方案。",
+            "next_steps": [],
+            "items": [],
+        },
+    )
+    set_mtime(task_dir / "artifacts.json", "2026-04-28T01:01:00+00:00")
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n原始请求\n",
+        encoding="utf-8",
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:03:00+00:00",
+                "type": "append_instruction",
+                "operator": "operator",
+                "payload": {"source": "gui", "kind": "operator_followup", "text": "请回复 ok"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (task_dir / "codex-stream.jsonl").write_text(
+        json.dumps({"timestamp": "2026-04-28T01:04:10+00:00", "text": "ok"}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+    task = build_task_index(tasks_root)[0]
+    html = render_task_chat_fragment(task)
+
+    assert 'data-role="chat-message-assistant-live"' in html
+    assert html.index("请回复 ok") < html.index("ok")
+
+
+def test_assistant_typing_fragment_renders_three_dot_bubble() -> None:
+    html = render_assistant_typing_fragment()
+
+    assert 'data-role="chat-message-assistant-live"' in html
+    assert html.count("animate-bounce") == 3
+
+
 def test_render_console_html_does_not_expose_clickable_fake_sidebar_links(tmp_path: Path) -> None:
     html = render_console_html(tmp_path / "tasks", tmp_path / "events")
 
@@ -242,6 +583,56 @@ def test_handle_console_action_appends_interrupts_and_acks(tmp_path: Path) -> No
     assert commands[0]["payload"]["kind"] == "operator_followup"
     assert commands[1]["type"] == "interrupt"
     assert "已确认" in (tasks_root / "task-1" / "ack.json").read_text(encoding="utf-8")
+
+
+def test_handle_console_action_seeds_existing_task_into_chat_log_before_append(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:02:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "上一轮回复",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "document.md"}],
+        },
+    )
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n第一轮问题\n",
+        encoding="utf-8",
+    )
+    (task_dir / "control.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-04-28T01:03:00+00:00",
+                "type": "append_instruction",
+                "operator": "operator",
+                "payload": {"source": "gui", "kind": "operator_followup", "text": "历史追问"},
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    handle_console_action(tasks_root, {"action": "append", "task_id": "task-1", "text": "最新追问"})
+
+    messages = [
+        json.loads(line)
+        for line in (task_dir / "chat_messages.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [message["role"] for message in messages] == ["user", "assistant", "user", "user"]
+    assert [message["text"] for message in messages] == ["第一轮问题", "上一轮回复", "历史追问", "最新追问"]
 
 
 def test_handle_console_action_retries_task(tmp_path: Path) -> None:

@@ -124,6 +124,7 @@ class AppServerClient:
         turn_id: str,
         timeout_seconds: float = 1800,
         on_idle: Callable[[], None] | None = None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
         poll_interval_seconds: float = 0.5,
     ) -> dict[str, Any]:
         deadline = time.monotonic() + timeout_seconds
@@ -139,6 +140,8 @@ class AppServerClient:
                         on_idle()
                     continue
             if message.get("method") != "turn/completed":
+                if on_event:
+                    on_event(message)
                 continue
             params = message.get("params") if isinstance(message.get("params"), dict) else {}
             if params.get("threadId") != thread_id and params.get("thread_id") != thread_id:
@@ -177,18 +180,16 @@ class CodexAppServerBackend:
 
     def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
         if thread_id is None:
-            thread = self.client.request(
-                "thread/start",
-                {
-                    "cwd": self.project_root.as_posix(),
-                    "approvalPolicy": "never",
-                    "persistExtendedHistory": True,
-                    "experimentalRawEvents": False,
-                },
-            )
-            thread_id = _required_string(thread, "threadId")
+            thread = self._start_thread()
+            thread_id = _required_thread_id(thread)
         else:
-            self.client.request("thread/resume", {"threadId": thread_id})
+            try:
+                self.client.request("thread/resume", {"threadId": thread_id})
+            except RuntimeError as exc:
+                if not _is_missing_thread_error(str(exc)):
+                    raise
+                thread = self._start_thread()
+                thread_id = _required_thread_id(thread)
         turn = self.client.request(
             "turn/start",
             {
@@ -204,6 +205,17 @@ class CodexAppServerBackend:
             },
         )
         return CodexTurn(thread_id=thread_id, turn_id=_optional_turn_id(turn))
+
+    def _start_thread(self) -> dict[str, Any]:
+        return self.client.request(
+            "thread/start",
+            {
+                "cwd": self.project_root.as_posix(),
+                "approvalPolicy": "never",
+                "persistExtendedHistory": True,
+                "experimentalRawEvents": True,
+            },
+        )
 
     def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict[str, Any]:
         return self.client.request(
@@ -229,8 +241,9 @@ class CodexAppServerBackend:
         thread_id: str,
         turn_id: str,
         on_idle: Callable[[], None] | None = None,
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
-        return self.client.wait_for_turn_completed(thread_id, turn_id, on_idle=on_idle)
+        return self.client.wait_for_turn_completed(thread_id, turn_id, on_idle=on_idle, on_event=on_event)
 
 
 def _text_input(text: str) -> list[dict[str, str]]:
@@ -245,6 +258,23 @@ def _required_string(data: dict[str, Any], key: str) -> str:
     if not value:
         raise RuntimeError(f"codex app-server response missing `{key}`")
     return value
+
+
+def _required_thread_id(data: dict[str, Any]) -> str:
+    thread_id = _optional_string(data, "threadId")
+    if thread_id:
+        return thread_id
+    thread = data.get("thread")
+    if isinstance(thread, dict):
+        thread_id = _optional_string(thread, "threadId") or _optional_string(thread, "id")
+        if thread_id:
+            return thread_id
+    raise RuntimeError("codex app-server response missing `threadId`")
+
+
+def _is_missing_thread_error(message: str) -> bool:
+    lowered = message.lower()
+    return "no rollout found" in lowered or "thread" in lowered and "not found" in lowered
 
 
 def _optional_string(data: dict[str, Any], key: str) -> str | None:

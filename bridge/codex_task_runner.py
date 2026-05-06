@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
-from bridge.artifacts import artifact_items, local_path
+from bridge.artifacts import artifact_items, resolve_local_path
 from bridge.task_protocol import read_artifacts, read_status, write_status
 
 Runner = Callable[[list[str]], str]
@@ -154,10 +154,9 @@ def _validate_codex_outputs(task_dir: Path) -> None:
 
 def _validate_artifact_item_paths(artifacts: dict[str, Any], task_dir: Path | None = None) -> None:
     for item in artifact_items(artifacts):
-        path = local_path(item)
-        if path is None:
+        resolved = resolve_local_path(item, task_dir=task_dir)
+        if resolved is None:
             continue
-        resolved = path if path.is_absolute() or task_dir is None else task_dir / path
         if not resolved.exists():
             raise FileNotFoundError(f"missing artifact item file: {resolved}")
 

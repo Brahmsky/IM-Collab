@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import OrderedDict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
+from bridge.chat_messages import read_chat_messages
 from bridge.task_index import EventSummary, TaskSummary
 
 
@@ -187,16 +189,7 @@ def _inspector_status_value_html(t: TaskSummary) -> str:
 
 
 def _build_inspector_primary_rows_html(t: TaskSummary) -> str:
-    tid_mono = (
-        f'<span class="text-text-primary bg-tag-bg-gray px-1.5 py-0.5 rounded font-mono text-[12px]">'
-        f"{escape(t.task_id)}</span>"
-    )
-    rows: list[tuple[str, str]] = [
-        ("状态", _inspector_status_value_html(t) if _task_display_state(t) == t.state else '<span class="px-2 py-0.5 rounded bg-[#FFF0E6] text-warning text-[12px] font-medium">待回复</span>'),
-        ("来源", escape(t.session_key or "—")),
-        ("创建于", escape(_short_created_display(t.created_at))),
-        ("任务 ID", tid_mono),
-    ]
+    rows: list[tuple[str, str]] = [("创建时间", escape(_short_created_display(t.created_at)))]
     out = []
     for label, val_html in rows:
         out.append(
@@ -205,18 +198,7 @@ def _build_inspector_primary_rows_html(t: TaskSummary) -> str:
 <span class="flex justify-end text-right break-all min-w-0">{val_html}</span>
 </div>"""
         )
-    tech = f"""<details class="mt-2 border border-border rounded-lg p-3 bg-surface-hover/30">
-<summary class="text-[12px] font-medium text-text-secondary cursor-pointer">运维与同步字段</summary>
-<div class="mt-3 space-y-2 text-[13px] text-text-primary">
-<div class="flex justify-between gap-2"><span class="text-text-secondary">Codex 线程</span><span class="font-mono text-right break-all">{escape(t.codex_thread_id or "—")}</span></div>
-<div class="flex justify-between gap-2"><span class="text-text-secondary">活跃回合</span><span class="font-mono text-right break-all">{escape(t.active_turn_id or "—")}</span></div>
-<div class="flex justify-between gap-2"><span class="text-text-secondary">控制队列</span><span>{escape(str(t.control_count) if t.control_count else "—")}</span></div>
-<div class="flex justify-between gap-2"><span class="text-text-secondary">最新操作</span><span class="break-all">{escape(t.last_control_type or "—")}</span></div>
-<div class="flex justify-between gap-2"><span class="text-text-secondary">确认人</span><span>{escape(t.ack_operator or "—")}</span></div>
-<div class="flex justify-between gap-2"><span class="text-text-secondary">更新时间</span><span class="tabular-nums">{escape(t.updated_at or "—")}</span></div>
-</div>
-</details>"""
-    return "".join(out) + tech
+    return "".join(out)
 
 
 def _group_by_session(tasks: list[TaskSummary]) -> OrderedDict[str, list[TaskSummary]]:
@@ -438,18 +420,13 @@ def render_user_chat_message_fragment(text: str) -> str:
     return _user_chat_bubble_html(text)
 
 
-def _assistant_chat_bubble_html(text: str, checklist: str, artifact_cards: str, err: str) -> str:
-    return f"""<div data-role="assistant-response" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
+def _assistant_chat_bubble_html(text: str) -> str:
+    return f"""<div data-role="chat-message-assistant" data-assistant-response="true" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
 <div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
 <span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
 </div>
-<div class="space-y-3 w-full max-w-[85%]">
-<div class="bg-white border border-border rounded-xl rounded-tl-sm p-4 shadow-sm">
-<p class="text-[14px] text-text-primary mb-3 whitespace-pre-wrap">{escape(text)}</p>
-<div class="space-y-2">{checklist}</div>
-</div>
-<div class="grid grid-cols-2 gap-3">{artifact_cards}</div>
-{err}
+<div class="bg-white border border-border rounded-xl rounded-tl-sm px-4 py-3 shadow-sm max-w-[85%]">
+<p class="text-[14px] text-text-primary whitespace-pre-wrap leading-relaxed">{escape(text)}</p>
 </div>
 </div>"""
 
@@ -462,6 +439,30 @@ def _pending_reply_marker_html() -> str:
 
 def render_pending_reply_marker_fragment() -> str:
     return _pending_reply_marker_html()
+
+
+def _assistant_typing_bubble_html(text: str = "") -> str:
+    body = (
+        f'<p class="text-[14px] text-text-primary whitespace-pre-wrap leading-relaxed">{escape(text)}</p>'
+        if text.strip()
+        else """<div class="flex items-center gap-1.5 py-1" aria-label="assistant 正在回复">
+<span class="w-2 h-2 rounded-full bg-text-secondary animate-bounce [animation-delay:-0.2s]"></span>
+<span class="w-2 h-2 rounded-full bg-text-secondary animate-bounce [animation-delay:-0.1s]"></span>
+<span class="w-2 h-2 rounded-full bg-text-secondary animate-bounce"></span>
+</div>"""
+    )
+    return f"""<div data-role="chat-message-assistant-live" class="flex justify-start w-full max-w-4xl mx-auto gap-3">
+<div class="w-8 h-8 rounded-full bg-tag-bg-blue flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[18px] text-primary">smart_toy</span>
+</div>
+<div class="bg-white border border-border rounded-xl rounded-tl-sm p-4 shadow-sm max-w-[85%] min-w-[72px]">
+{body}
+</div>
+</div>"""
+
+
+def render_assistant_typing_fragment() -> str:
+    return _assistant_typing_bubble_html()
 
 
 def _render_checklist_html(t: TaskSummary) -> str:
@@ -477,54 +478,146 @@ def _render_checklist_html(t: TaskSummary) -> str:
 
 
 def render_assistant_bubble_fragment(t: TaskSummary) -> str:
-    """Render the assistant response bubble (checklist + artifact cards + error).
-
-    Used by SSE to push incremental updates of the assistant block without
-    replacing the entire chat transcript (which would cause artifact cards to
-    "pop up" on every tick).
-    """
-    if not t.summary and t.state != "completed":
-        return ""
-    checklist = _render_checklist_html(t)
-    artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in t.artifact_outputs) or _artifact_card_main(
-        "交付产物",
-        "",
-    )
-    err = f'<p class="text-[13px] text-error mt-2">{escape(t.error)}</p>' if t.error else ""
-    text = t.summary or _workspace_status_message(t)
-    return _assistant_chat_bubble_html(text, checklist, artifact_cards, err)
+    messages = [message for message in _chat_log_messages(t) if message[1] == "assistant"]
+    return _assistant_chat_bubble_html(messages[-1][2]) if messages else ""
 
 
-def _chat_transcript_html(t: TaskSummary, checklist: str, artifact_cards: str, err: str) -> str:
+def _chat_transcript_html(t: TaskSummary) -> str:
     messages: list[tuple[datetime, int, str]] = []
-    request = _task_request_message(t)
-    if request:
-        created = _parse_iso_datetime(t.created_at) or datetime.min.replace(tzinfo=UTC)
-        messages.append((created, 0, _user_chat_bubble_html(request)))
-    if t.summary or t.state == "completed":
-        completed = _parse_iso_datetime(t.updated_at) or datetime.max.replace(tzinfo=UTC)
-        text = t.summary or _workspace_status_message(t)
-        messages.append((completed, 1, _assistant_chat_bubble_html(text, checklist, artifact_cards, err)))
-    for item in _append_instruction_items(t):
-        ts = _parse_iso_datetime(item.get("timestamp", "")) or datetime.max.replace(tzinfo=UTC)
-        messages.append((ts, 2, _user_chat_bubble_html(item["text"])))
+    for timestamp, role, text in _chat_log_messages(t):
+        order = 0 if role == "user" else 1
+        html = _user_chat_bubble_html(text) if role == "user" else _assistant_chat_bubble_html(text)
+        messages.append((timestamp, order, html))
     messages.sort(key=lambda item: (item[0], item[1]))
     rendered = "".join(item[2] for item in messages)
+    live_text = _codex_stream_text(t)
+    if _should_show_live_assistant(t):
+        rendered += _assistant_typing_bubble_html(live_text)
     if _pending_append_instruction_items(t):
         rendered += _pending_reply_marker_html()
     if not rendered:
-        rendered = _user_chat_bubble_html(t.summary or "根据群聊与指令生成办公交付物。")
+        rendered = _user_chat_bubble_html(_task_request_message(t) or "你好")
     return rendered
 
 
+def _chat_log_messages(t: TaskSummary) -> list[tuple[datetime, str, str]]:
+    stored = read_chat_messages(t.path)
+    if stored:
+        out: list[tuple[datetime, str, str]] = []
+        for message in stored:
+            timestamp = _parse_iso_datetime(str(message.get("timestamp") or "")) or datetime.max.replace(tzinfo=UTC)
+            out.append((timestamp, str(message["role"]), str(message["text"])))
+        return out
+
+    out = []
+    request = _task_request_message(t)
+    if request:
+        created = _parse_iso_datetime(t.created_at) or datetime.min.replace(tzinfo=UTC)
+        out.append((created, "user", request))
+    if t.summary:
+        out.append((_assistant_message_time(t), "assistant", t.summary))
+    for item in _append_instruction_items(t):
+        ts = _parse_iso_datetime(item.get("timestamp", "")) or datetime.max.replace(tzinfo=UTC)
+        out.append((ts, "user", item["text"]))
+    return out
+
+
+def _assistant_message_time(t: TaskSummary) -> datetime:
+    created = _parse_iso_datetime(t.created_at) or datetime.min.replace(tzinfo=UTC)
+    if t.summary:
+        artifact_time = _artifact_protocol_time(t)
+        if artifact_time is not None:
+            return max(artifact_time, created + timedelta(microseconds=1))
+    if t.state == "failed" and t.summary:
+        return created + timedelta(microseconds=1)
+    return _parse_iso_datetime(t.updated_at) or datetime.max.replace(tzinfo=UTC)
+
+
+def _artifact_protocol_time(t: TaskSummary) -> datetime | None:
+    path = t.path / "artifacts.json"
+    if not path.is_file():
+        return None
+    return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+
+
+def _should_show_live_assistant(t: TaskSummary) -> bool:
+    if t.state not in {"running", "failed"}:
+        return False
+    appends = _append_instruction_items(t)
+    chat_messages = _chat_log_messages(t)
+    if not appends and not chat_messages:
+        return False
+    assistant_time = _assistant_message_time(t)
+    has_new_append = False
+    for item in appends:
+        item_time = _parse_iso_datetime(item.get("timestamp", ""))
+        if item_time is None or item_time > assistant_time:
+            has_new_append = True
+            break
+    if not has_new_append:
+        for item_time, role, _text in chat_messages:
+            if role == "user" and item_time > assistant_time:
+                has_new_append = True
+                break
+    if not has_new_append:
+        return bool(t.state == "running" and _codex_stream_text(t).strip())
+    return t.state == "running" or bool(_codex_stream_text(t).strip())
+
+
+def _codex_stream_text(t: TaskSummary) -> str:
+    path = t.path / "codex-stream.jsonl"
+    if not path.is_file():
+        return ""
+    chunks: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        text = str(event.get("text") or "").strip()
+        if text and _is_user_facing_stream_text(text):
+            chunks.append(text)
+    return "\n".join(_dedupe_preserve_order(chunks[-8:])).strip()
+
+
+def _is_user_facing_stream_text(text: str) -> bool:
+    value = text.strip()
+    if not value:
+        return False
+    if len(value) < 4 and value.lower() != "ok":
+        return False
+    if value.startswith(("{", "[", "}", "]")):
+        return False
+    if "Under-development features enabled" in value:
+        return False
+    if "Success. Updated the following files" in value:
+        return False
+    if re.search(r"(^|\s)(/[^ \n]+|[A-Za-z]:\\[^ \n]+)", value):
+        return False
+    if re.search(r"\b(plan|artifacts|status|control|request|reply)\.json\b", value):
+        return False
+    if re.search(r"\b(reply|document|slides|whiteboard)\.(md|mmd|json)\b", value):
+        return False
+    if value.count("{") + value.count("}") + value.count('"') >= 4:
+        return False
+    return True
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen = set()
+    out = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
 def render_task_chat_fragment(t: TaskSummary) -> str:
-    checklist = _render_checklist_html(t)
-    artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in t.artifact_outputs) or _artifact_card_main(
-        "交付产物",
-        "",
-    )
-    err = f'<p class="text-[13px] text-error mt-2">{escape(t.error)}</p>' if t.error else ""
-    return _chat_transcript_html(t, checklist, artifact_cards, err)
+    return _chat_transcript_html(t)
 
 
 def _workspace_status_message(t: TaskSummary) -> str:
@@ -649,37 +742,35 @@ def _timeline_panel_html(t: TaskSummary, events: EventSummary) -> str:
     return "".join(parts)
 
 
-def _right_inspector_drawer(rows_html: str, artifact_list: str, ops_html: str, t: TaskSummary, events: EventSummary) -> str:
-    """Match `GUI/code.html`: tab strip + single scroll stack (详情 + 工件); timeline appended for live data."""
-    timeline = _timeline_panel_html(t, events)
+def _session_artifact_outputs(tasks: list[TaskSummary], selected: TaskSummary) -> list[tuple[str, str]]:
+    selected_group = _task_group_label(selected)
+    outputs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for task in tasks:
+        if _task_group_label(task) != selected_group:
+            continue
+        for label, value in task.artifact_outputs:
+            key = (label, value)
+            if key in seen:
+                continue
+            seen.add(key)
+            outputs.append(key)
+    return outputs
+
+
+def _right_inspector_drawer(rows_html: str, artifact_list: str) -> str:
     return f"""<div class="h-14 border-b border-border flex flex-col justify-center px-5 shrink-0">
 <h2 class="text-[16px] font-semibold text-text-primary">智能体交互空间</h2>
 <p class="text-[12px] text-text-secondary mt-0.5">Metadata &amp; Artifacts</p>
-</div>
-<div class="flex border-b border-border shrink-0 px-2" role="tablist" aria-label="Inspector">
-<div class="flex-1 py-3 flex items-center justify-center gap-1.5 border-b-2 border-primary text-primary font-medium text-[14px]">
-<span class="material-symbols-outlined text-[18px]">info</span><span>详情</span>
-</div>
-<div class="flex-1 py-3 flex items-center justify-center gap-1.5 text-text-secondary text-[14px]">
-<span class="material-symbols-outlined text-[18px]">description</span><span>工件</span>
-</div>
-<div class="flex-1 py-3 flex items-center justify-center gap-1.5 text-text-secondary text-[14px]">
-<span class="material-symbols-outlined text-[18px]">history</span><span>时间线</span>
-</div>
 </div>
 <div class="flex-1 overflow-y-auto p-5 space-y-6 min-h-0">
 <section>
 <h3 class="text-[12px] font-medium text-text-secondary mb-3 border-b border-border pb-2">执行详情</h3>
 <div class="space-y-3">{rows_html}</div>
-{ops_html}
 </section>
 <section>
 <h3 class="text-[12px] font-medium text-text-secondary mb-3 border-b border-border pb-2">已生成工件</h3>
 <div class="space-y-2">{artifact_list}</div>
-</section>
-<section>
-<h3 class="text-[12px] font-medium text-text-secondary mb-3 border-b border-border pb-2">时间线</h3>
-{timeline}
 </section>
 </div>"""
 
@@ -805,9 +896,21 @@ document.addEventListener("DOMContentLoaded", () => {{
       const data = JSON.parse(event.data);
       const chat = document.querySelector("[data-chat-scroll-container='true']");
       if (!chat) return;
-      // Update assistant response block only when its content changes
+      if (data.chat_html !== undefined) {{
+        if (data.chat_html && chat.innerHTML !== data.chat_html) {{
+          chat.innerHTML = data.chat_html;
+          _lastAssistantHtml = data.assistant_html || "";
+        }}
+        scrollChatToBottom();
+        if (data.done && taskStream) {{
+          taskStream.close();
+          taskStream = null;
+        }}
+        return;
+      }}
+      // Fallback for older stream payloads: update assistant response block only when its content changes.
       if (data.assistant_html !== undefined) {{
-        const currentAssistant = chat.querySelector("[data-role='assistant-response']");
+        const currentAssistant = chat.querySelector("[data-assistant-response='true']");
         if (data.assistant_html !== _lastAssistantHtml) {{
           if (currentAssistant) {{
             if (data.assistant_html) {{
@@ -865,8 +968,13 @@ document.addEventListener("DOMContentLoaded", () => {{
         const chat = document.querySelector("[data-chat-scroll-container='true']");
         if (chat) {{
           for (const node of chat.querySelectorAll("[data-role='pending-reply-marker']")) node.remove();
+          for (const node of chat.querySelectorAll("[data-role='chat-message-assistant-live']")) node.remove();
           chat.insertAdjacentHTML("beforeend", data.message_html || "");
-          if (data.pending_marker_html) chat.insertAdjacentHTML("beforeend", data.pending_marker_html);
+          if (data.typing_html) {{
+            chat.insertAdjacentHTML("beforeend", data.typing_html);
+          }} else if (data.pending_marker_html) {{
+            chat.insertAdjacentHTML("beforeend", data.pending_marker_html);
+          }}
           scrollChatToBottom();
         }}
         if (textarea) textarea.value = "";
@@ -1005,19 +1113,13 @@ def render_cockpit_document(
         badge = _display_state_badge_html(t)
         header_title = _cockpit_header_title(t)
 
-        checklist = _render_checklist_html(t)
         arts = t.artifact_outputs
-        artifact_cards = "".join(_artifact_card_main(lbl, val) for lbl, val in arts) or _artifact_card_main(
-            "交付产物",
-            "",
-        )
-        err = f'<p class="text-[13px] text-error mt-2">{escape(t.error)}</p>' if t.error else ""
-        chat_transcript = _chat_transcript_html(t, checklist, artifact_cards, err)
+        chat_transcript = _chat_transcript_html(t)
 
         rows_html = _build_inspector_primary_rows_html(t)
 
         artifact_list = ""
-        for lbl, val in arts:
+        for lbl, val in _session_artifact_outputs(tasks, t):
             icon, kind = _artifact_kind(lbl)
             if val and val.startswith("http"):
                 artifact_list += f"""<a href="{escape(val, quote=True)}" target="_blank" rel="noopener" class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-surface-hover transition-colors cursor-pointer border border-transparent no-underline text-inherit">
@@ -1039,7 +1141,6 @@ def render_cockpit_document(
 {badge}
 <span class="sr-only" data-state="{escape(t.state)}" data-task-id="{escape(t.task_id)}">state={escape(t.state)}</span>
 </div>
-{_main_header_tools(t.task_id)}
 </header>
 <div class="flex-1 overflow-y-auto p-6 space-y-6 pb-32" data-chat-scroll-container="true">
 {chat_transcript}
@@ -1048,13 +1149,7 @@ def render_cockpit_document(
 {_append_form(t.task_id)}
 </div>"""
 
-        inspector_column = _right_inspector_drawer(
-            rows_html,
-            artifact_list,
-            _ops_form(t),
-            t,
-            events,
-        )
+        inspector_column = _right_inspector_drawer(rows_html, artifact_list)
 
     title = "Agent-Pilot Cockpit"
     q_val = escape(search_query)

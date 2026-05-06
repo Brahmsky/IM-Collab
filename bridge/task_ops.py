@@ -40,6 +40,7 @@ def retry_golembot_task(
     generator: str = "app-server",
     publish: bool = False,
     runner: OfficeRunner = run_golembot_office_task,
+    codex_backend: Any | None = None,
 ) -> dict[str, Any]:
     request = parse_golembot_request(task_dir)
     return runner(
@@ -51,6 +52,7 @@ def retry_golembot_task(
         task_id=task_dir.name,
         generator=generator,
         publish=publish,
+        codex_backend=codex_backend,
     )
 
 

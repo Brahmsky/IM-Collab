@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from bridge.codex_task_runner import build_codex_task_args, build_codex_task_prompt, run_codex_task
+from bridge.codex_task_runner import (
+    _validate_artifact_item_paths,
+    build_codex_task_args,
+    build_codex_task_prompt,
+    run_codex_task,
+)
 from bridge.task_protocol import create_task, read_artifacts, read_status
 
 
@@ -129,6 +134,17 @@ def test_run_codex_task_validates_outputs_and_marks_completed(tmp_path: Path) ->
     assert read_status(task_dir)["state"] == "completed"
     assert artifacts == read_artifacts(task_dir)
     assert artifacts["summary"] == "Codex generated office artifacts."
+
+
+def test_validate_artifact_item_paths_accepts_repo_relative_task_path(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "task-1", "Reply ok.")
+    (task_dir / "reply.md").write_text("ok\n", encoding="utf-8")
+    artifacts = {
+        "task_id": "task-1",
+        "items": [{"id": "reply", "kind": "message", "path": "tasks/task-1/reply.md"}],
+    }
+
+    _validate_artifact_item_paths(artifacts, task_dir=task_dir)
 
 
 def test_run_codex_task_marks_failed_when_outputs_missing(tmp_path: Path) -> None:

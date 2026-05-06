@@ -383,7 +383,7 @@ def test_completed_task_with_new_control_runs_codex_again_on_same_task(tmp_path:
     )
 
     assert seen["task_dir"] == task_dir.name
-    assert seen["steered_text"] == "补充团队分工。"
+    assert "steered_text" not in seen
     assert read_status(task_dir)["state"] == "completed"
 
 
