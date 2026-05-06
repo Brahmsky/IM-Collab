@@ -95,7 +95,26 @@ def test_codex_app_server_backend_starts_thread_and_turn_for_task(tmp_path: Path
     assert turn_start["params"]["sandboxPolicy"]["type"] == "workspaceWrite"
     assert task_dir.as_posix() in turn_start["params"]["sandboxPolicy"]["writableRoots"]
     assert turn_start["params"]["input"][0]["type"] == "text"
-    assert "Required outputs" in turn_start["params"]["input"][0]["text"]
+    assert "你必须产出" in turn_start["params"]["input"][0]["text"]
+
+
+def test_codex_app_server_backend_resolves_relative_task_dir_for_writable_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    task_dir = create_task(Path("tasks"), "im-om_123", "Generate a deck.")
+    transport = FakeLineTransport(
+        [
+            {"id": 1, "result": {"threadId": "thread_123"}},
+            {"id": 2, "result": {"turnId": "turn_456"}},
+        ]
+    )
+    backend = CodexAppServerBackend(AppServerClient(transport), project_root=tmp_path.resolve())
+
+    backend.start_task(task_dir)
+
+    turn_start = json.loads(transport.writes[1])
+    writable_roots = turn_start["params"]["sandboxPolicy"]["writableRoots"]
+    assert str((tmp_path / "tasks" / "im-om_123").resolve()) in writable_roots
+    assert "tasks/im-om_123" not in writable_roots
 
 
 def test_codex_app_server_backend_reads_nested_turn_id_from_start_response(tmp_path: Path) -> None:
@@ -147,6 +166,25 @@ def test_codex_app_server_backend_reuses_existing_thread_for_followup_task(tmp_p
     assert [write["method"] for write in writes] == ["thread/resume", "turn/start"]
     assert writes[0]["params"]["threadId"] == "thread_existing"
     assert writes[1]["params"]["threadId"] == "thread_existing"
+
+
+def test_codex_app_server_backend_followup_can_send_current_message_only(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_456", "旧请求不应该重新发送。")
+    transport = FakeLineTransport(
+        [
+            {"id": 1, "result": {"threadId": "thread_existing"}},
+            {"id": 2, "result": {"turn": {"id": "turn_followup", "status": "running"}}},
+        ]
+    )
+    backend = CodexAppServerBackend(AppServerClient(transport), project_root=Path("/repo"))
+
+    backend.start_task(task_dir, thread_id="thread_existing", input_text="当前这一轮消息")
+
+    writes = [json.loads(line) for line in transport.writes]
+    turn_start = writes[1]
+    assert turn_start["method"] == "turn/start"
+    assert turn_start["params"]["input"][0]["text"] == "当前这一轮消息"
+    assert "旧请求不应该重新发送" not in turn_start["params"]["input"][0]["text"]
 
 
 def test_codex_app_server_backend_starts_new_thread_when_resume_rollout_is_missing(tmp_path: Path) -> None:
@@ -214,6 +252,44 @@ def test_app_server_client_waits_for_matching_turn_completed_notification() -> N
 
     result = client.wait_for_turn_completed("thread_123", "turn_456")
 
+    assert result["status"] == "completed"
+
+
+def test_app_server_client_accepts_top_level_turn_completed_shape() -> None:
+    transport = FakeLineTransport(
+        [
+            {
+                "method": "turn/completed",
+                "params": {"threadId": "thread_123", "turnId": "turn_456", "status": "completed"},
+            }
+        ]
+    )
+    client = AppServerClient(transport)
+
+    result = client.wait_for_turn_completed("thread_123", "turn_456")
+
+    assert result["turnId"] == "turn_456"
+    assert result["status"] == "completed"
+
+
+def test_app_server_client_accepts_nested_codex_turn_completed_event() -> None:
+    transport = FakeLineTransport(
+        [
+            {
+                "method": "codex/event",
+                "params": {
+                    "threadId": "thread_123",
+                    "turnId": "turn_456",
+                    "msg": {"type": "turn.completed", "usage": {"total_tokens": 42}},
+                },
+            }
+        ]
+    )
+    client = AppServerClient(transport)
+
+    result = client.wait_for_turn_completed("thread_123", "turn_456")
+
+    assert result["type"] == "turn.completed"
     assert result["status"] == "completed"
 
 
@@ -358,6 +434,62 @@ def test_run_codex_app_server_task_does_not_steer_preexisting_control_log(tmp_pa
     assert seen["steers"] == []
 
 
+def test_run_codex_app_server_task_sends_latest_append_only_for_existing_thread(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "旧请求不应该重新发送。")
+    append_control_command(task_dir, "append_instruction", {"text": "第一条追问"}, operator="gui")
+    append_control_command(task_dir, "append_instruction", {"text": "当前这一轮消息"}, operator="gui")
+    seen: dict[str, object] = {}
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None, input_text: str | None = None):
+            seen["thread_id"] = thread_id
+            seen["input_text"] = input_text
+            write_codex_outputs(task_path)
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id=thread_id or "thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str):
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend(), thread_id="thread_existing")
+
+    assert seen["thread_id"] == "thread_existing"
+    assert seen["input_text"] == "当前这一轮消息"
+
+
+def test_run_codex_app_server_task_prefers_codex_input_text_for_existing_thread(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "旧请求不应该重新发送。")
+    append_control_command(
+        task_dir,
+        "append_instruction",
+        {
+            "text": "补充：封面要更正式",
+            "codex_input_text": "当前群聊补充指令：\n补充：封面要更正式\n\n距离上一次群聊吸收边界之后的新群聊消息：\n- [om_delta] teammate: 新增了封面风格要求",
+        },
+        operator="feishu",
+    )
+    seen: dict[str, object] = {}
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None, input_text: str | None = None):
+            seen["thread_id"] = thread_id
+            seen["input_text"] = input_text
+            write_codex_outputs(task_path)
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id=thread_id or "thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str):
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend(), thread_id="thread_existing")
+
+    assert seen["thread_id"] == "thread_existing"
+    assert "新增了封面风格要求" in str(seen["input_text"])
+    assert "补充：封面要更正式" in str(seen["input_text"])
+
+
 def test_run_codex_app_server_task_clears_stale_stream_before_new_turn(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_123", "Generate a deck.")
     (task_dir / "codex-stream.jsonl").write_text('{"text":"old"}\n', encoding="utf-8")
@@ -435,3 +567,25 @@ def test_run_codex_app_server_task_persists_final_assistant_chat_message(tmp_pat
     assert '"role": "assistant"' in chat_log
     assert '"text": "ok"' in chat_log
     assert "任务摘要不应该覆盖" not in chat_log
+
+
+def test_run_codex_app_server_task_persists_followup_stream_text_instead_of_stale_artifacts(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "im-om_123", "初始任务。")
+    write_codex_outputs(task_dir)
+
+    class FakeBackend:
+        def start_task(self, task_path: Path, thread_id: str | None = None, input_text: str | None = None):
+            from bridge.codex_app_server import CodexTurn
+
+            return CodexTurn(thread_id=thread_id or "thread_123", turn_id="turn_456")
+
+        def wait_for_task(self, thread_id: str, turn_id: str, on_idle=None, on_event=None):
+            assert on_event is not None
+            on_event({"method": "codex/event", "params": {"text": "ok"}})
+            return {"id": turn_id, "status": "completed"}
+
+    run_codex_app_server_task(task_dir, project_root=tmp_path, backend=FakeBackend(), thread_id="thread_existing")
+
+    chat_log = (task_dir / "chat_messages.jsonl").read_text(encoding="utf-8")
+    assert '"text": "ok"' in chat_log
+    assert "Local MVP completed" not in chat_log

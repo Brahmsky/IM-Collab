@@ -2,6 +2,8 @@
 
 Date: 2026-05-01
 
+Status note, 2026-05-06: the selector results below are historical. The current selector no longer relies on fixture-only message `tags`; it keeps runtime-stable signals only, namely attachments and recent-tail messages. Semantic importance should come from LangExtract evidence extraction, not a hand-maintained tag priority list.
+
 ## Purpose
 
 This records the first quantitative evaluation of the optional LangExtract + DeepSeek V4 Flash extractor against source-grounded group-chat oracle files.
@@ -59,7 +61,7 @@ rtk .venv/bin/python scripts/extract_group_briefing_evidence.py \
 | `--select-context --max-context-messages 45 --recent-tail 12` | 21 | 7 / 16 | 0.44 |
 | `--select-context --max-context-messages 60 --recent-tail 16` | 50 | 13 / 16 | 0.81 |
 
-Two passes improved recall slightly but increased latency substantially. A 45-message selector reduced cost but lost too much evidence. A more conservative 60-message selector produced the best score by preserving formal notices, corrections, final-file messages, attachments, and recent tail context.
+Two passes improved recall slightly but increased latency substantially. A 45-message selector reduced cost but lost too much evidence. A more conservative 60-message selector produced the best historical score. That selector depended on fixture tags and is no longer the production direction.
 
 ## Interpretation
 
@@ -84,4 +86,4 @@ This is a good evaluation demo:
 - It can score evidence against a source-grounded oracle.
 - It can show measured limitations instead of hand-waving about quality.
 
-The selector result is strong enough to keep developing this path as a candidate briefing backend. It remains optional, but the task loop now supports `brief_extractor="langextract-deepseek"` and writes both `evidence.json` and `brief.json` when explicitly enabled.
+The LangExtract evidence result is strong enough to keep developing this path as a candidate briefing backend. The tag-based selector experiment should not be treated as production semantics. The task loop supports `brief_extractor="langextract-deepseek"` and writes both `evidence.json` and `brief.json` when explicitly enabled.

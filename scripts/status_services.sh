@@ -23,7 +23,7 @@ else
 fi
 
 printf '\nprocesses:\n'
-pgrep -af "scripts/task_console_web.py|codex app-server|golembot gateway" || true
+pgrep -af "scripts/task_console_web.py|codex app-server|golembot gateway|scripts/subscribe_feishu_events.py|scripts/run_event_consumer.py|lark-cli event \\+subscribe" || true
 
 printf '\nport %s:\n' "$PORT"
 lsof -nP -iTCP:"$PORT" -sTCP:LISTEN || true
@@ -31,3 +31,5 @@ lsof -nP -iTCP:"$PORT" -sTCP:LISTEN || true
 printf '\nlogs:\n'
 printf '  %s/task_console_web.log\n' "$LOG_DIR"
 printf '  %s/golembot_gateway.log\n' "$LOG_DIR"
+printf '  %s/feishu_listener.log\n' "$LOG_DIR"
+printf '  %s/event_consumer.log\n' "$LOG_DIR"

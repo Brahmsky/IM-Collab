@@ -7,6 +7,8 @@ cd "$ROOT_DIR"
 HOST="${IM_COLLAB_CONSOLE_HOST:-127.0.0.1}"
 PORT="${IM_COLLAB_CONSOLE_PORT:-8765}"
 LOG_DIR="$ROOT_DIR/logs/services"
+EVENT_DIR="${IM_COLLAB_EVENT_DIR:-events/im}"
+BOT_OPEN_ID="${IM_COLLAB_BOT_OPEN_ID:-}"
 mkdir -p "$LOG_DIR"
 
 run_bg() {
@@ -40,6 +42,23 @@ run_bg task_console_web \
 
 run_bg golembot_gateway \
   rtk npm exec -- golembot gateway -d .experiments/golembot-codex --verbose
+
+run_bg feishu_listener \
+  rtk .venv/bin/python scripts/subscribe_feishu_events.py \
+    --output-dir "$EVENT_DIR"
+
+consumer_args=(
+  rtk .venv/bin/python scripts/run_event_consumer.py
+  --event-dir "$EVENT_DIR"
+  --dispatch golembot
+  --publish
+  --execute
+  --generator app-server
+)
+if [[ -n "$BOT_OPEN_ID" ]]; then
+  consumer_args+=(--bot-open-id "$BOT_OPEN_ID")
+fi
+run_bg event_consumer "${consumer_args[@]}"
 
 url="http://$HOST:$PORT/"
 if wait_for_http "$url"; then

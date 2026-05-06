@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -86,10 +87,15 @@ def reply_card_to_message(
     return {"ok": True, "dry_run": dry_run, "response": _extract_json(output), "raw": output}
 
 
-def build_list_messages_args(chat_id: str, page_size: int = 20, identity: str = "user") -> list[str]:
+def build_list_messages_args(
+    chat_id: str,
+    page_size: int = 20,
+    identity: str = "user",
+    page_token: str | None = None,
+) -> list[str]:
     if identity not in {"user", "bot"}:
         raise ValueError("identity must be 'user' or 'bot'")
-    return [
+    args = [
         "lark-cli",
         "im",
         "+chat-messages-list",
@@ -102,21 +108,77 @@ def build_list_messages_args(chat_id: str, page_size: int = 20, identity: str = 
         "--sort",
         "desc",
     ]
+    if page_token:
+        args.extend(["--page-token", page_token])
+    return args
 
 
 def list_chat_messages(
     chat_id: str,
     page_size: int = 20,
     identity: str = "user",
+    cutoff_after: datetime | None = None,
+    stop_at_message_id: str | None = None,
+    max_pages: int = 20,
     runner: Runner | None = None,
 ) -> list[dict[str, Any]]:
-    args = build_list_messages_args(chat_id, page_size=page_size, identity=identity)
-    output = runner(args) if runner else _subprocess_runner(args)
-    response = _extract_json(output)
-    messages = response.get("data", {}).get("messages", [])
-    if not isinstance(messages, list):
-        raise ValueError("lark-cli message list response did not contain data.messages")
-    return [message for message in reversed(messages) if isinstance(message, dict)]
+    collected: list[dict[str, Any]] = []
+    page_token: str | None = None
+    cutoff = _normalize_datetime(cutoff_after)
+    for _ in range(max_pages):
+        args = build_list_messages_args(chat_id, page_size=page_size, identity=identity, page_token=page_token)
+        output = runner(args) if runner else _subprocess_runner(args)
+        response = _extract_json(output)
+        data = response.get("data", {})
+        messages = data.get("messages", []) if isinstance(data, dict) else []
+        if not isinstance(messages, list):
+            raise ValueError("lark-cli message list response did not contain data.messages")
+        page_messages = [message for message in messages if isinstance(message, dict)]
+        collected.extend(page_messages)
+        if cutoff is not None and any((_message_time(message) or datetime.min.replace(tzinfo=UTC)) < cutoff for message in page_messages):
+            break
+        if stop_at_message_id is not None and any(
+            str(message.get("message_id") or message.get("id") or "") == stop_at_message_id
+            for message in page_messages
+        ):
+            break
+        if not isinstance(data, dict) or not data.get("has_more"):
+            break
+        page_token = str(data.get("page_token") or data.get("next_page_token") or "")
+        if not page_token:
+            break
+    filtered = [
+        message
+        for message in collected
+        if cutoff is None or (_message_time(message) is not None and _message_time(message) >= cutoff)
+    ]
+    return list(reversed(filtered))
+
+
+def _normalize_datetime(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _message_time(message: dict[str, Any]) -> datetime | None:
+    raw = str(message.get("sent_at") or message.get("create_time") or message.get("timestamp") or "").strip()
+    if not raw:
+        return None
+    if raw.isdigit():
+        timestamp = int(raw)
+        if timestamp > 10_000_000_000:
+            timestamp = timestamp // 1000
+        return datetime.fromtimestamp(timestamp, tz=UTC)
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def build_delivery_markdown(artifacts: dict[str, Any]) -> str:

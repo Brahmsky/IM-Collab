@@ -6,7 +6,7 @@ from bridge.group_context import build_standard_group_context
 from bridge.group_context_selector import select_briefing_context
 
 
-def test_select_briefing_context_uses_backend_tags_attachments_and_recent_tail() -> None:
+def test_select_briefing_context_ignores_fixture_tags_and_uses_real_message_signals() -> None:
     messages = [
         {"message_id": "om_1", "content": "闲聊", "tags": ["noise"]},
         {"message_id": "om_2", "content": "正式通知：4 月 28 日截止", "tags": ["formal_notice", "deadline"]},
@@ -19,10 +19,10 @@ def test_select_briefing_context_uses_backend_tags_attachments_and_recent_tail()
 
     selected = select_briefing_context(messages, max_messages=5, recent_tail=1)
 
-    assert [message["message_id"] for message in selected] == ["om_2", "om_4", "om_5", "om_6", "om_7"]
+    assert [message["message_id"] for message in selected] == ["om_5", "om_7"]
 
 
-def test_select_briefing_context_does_not_keyword_scan_untagged_messages() -> None:
+def test_select_briefing_context_does_not_keyword_scan_message_content() -> None:
     messages = [
         {"message_id": "om_1", "content": "正式通知：这句话包含很多看似重要的词，但是没有后端 tag。"},
         {"message_id": "om_2", "content": "普通消息"},
@@ -34,7 +34,7 @@ def test_select_briefing_context_does_not_keyword_scan_untagged_messages() -> No
     assert [message["message_id"] for message in selected] == ["om_3"]
 
 
-def test_select_briefing_context_keeps_recent_tail_when_priority_messages_fill_budget() -> None:
+def test_select_briefing_context_keeps_recent_tail_when_old_fixture_tags_exist() -> None:
     messages = [
         {"message_id": f"om_{index}", "content": f"消息 {index}", "tags": ["formal_notice"] if index == 1 else []}
         for index in range(1, 12)
@@ -42,10 +42,10 @@ def test_select_briefing_context_keeps_recent_tail_when_priority_messages_fill_b
 
     selected = select_briefing_context(messages, max_messages=4, recent_tail=3)
 
-    assert [message["message_id"] for message in selected] == ["om_1", "om_9", "om_10", "om_11"]
+    assert [message["message_id"] for message in selected] == ["om_9", "om_10", "om_11"]
 
 
-def test_grant_selector_reduces_context_but_keeps_oracle_evidence_surface() -> None:
+def test_grant_selector_reduces_context_without_using_fixture_tags() -> None:
     messages = build_standard_group_context(
         Path("examples/scenarios/group_briefing/grant_application_ultra_long_context/context.json")
     )
@@ -55,13 +55,5 @@ def test_grant_selector_reduces_context_but_keeps_oracle_evidence_surface() -> N
 
     assert len(selected) <= 45
     assert len(selected) < len(messages)
-    assert {
-        "om_grant_030",
-        "om_grant_031",
-        "om_grant_049",
-        "om_grant_055",
-        "om_grant_056",
-        "om_grant_062",
-        "om_grant_064",
-        "om_grant_066",
-    } <= selected_ids
+    assert "om_grant_001" not in selected_ids
+    assert "om_grant_008" in selected_ids

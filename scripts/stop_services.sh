@@ -47,5 +47,8 @@ done
 pkill -f "scripts/task_console_web.py" 2>/dev/null || true
 pkill -f "codex app-server" 2>/dev/null || true
 pkill -f "golembot gateway -d .experiments/golembot-codex" 2>/dev/null || true
+pkill -f "scripts/subscribe_feishu_events.py" 2>/dev/null || true
+pkill -f "scripts/run_event_consumer.py" 2>/dev/null || true
+pkill -f "lark-cli event \\+subscribe" 2>/dev/null || true
 
 say "services stopped"

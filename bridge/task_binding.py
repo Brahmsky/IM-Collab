@@ -15,6 +15,8 @@ def build_golembot_session_key(
 ) -> str:
     if channel_type == "slack" and chat_type in {"group", "channel"} and thread_id:
         return f"{channel_type}:{chat_id}:thread:{thread_id}"
+    if channel_type == "feishu" and chat_type in {"group", "channel"} and thread_id:
+        return f"{channel_type}:{chat_id}:session:{thread_id}"
     if chat_type in {"group", "channel"}:
         return f"{channel_type}:{chat_id}"
     if channel_type == "slack" and thread_id:
@@ -26,6 +28,22 @@ def get_task_binding(index_path: Path, session_key: str) -> dict[str, Any] | Non
     return _read_index(index_path).get(session_key)
 
 
+def find_latest_active_group_session_binding(
+    index_path: Path,
+    channel_type: str,
+    chat_id: str,
+) -> dict[str, Any] | None:
+    prefix = f"{channel_type}:{chat_id}:session:"
+    candidates = [
+        binding
+        for key, binding in _read_index(index_path).items()
+        if key.startswith(prefix) and binding.get("active_task_id")
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda binding: str(binding.get("updated_at") or binding.get("created_at") or ""))
+
+
 def bind_active_task(
     index_path: Path,
     session_key: str,
@@ -33,8 +51,10 @@ def bind_active_task(
     chat_id: str,
     channel_type: str,
     sender_id: str,
+    chat_name: str | None = None,
     codex_thread_id: str | None = None,
     active_turn_id: str | None = None,
+    last_absorbed_message_id: str | None = None,
 ) -> dict[str, Any]:
     data = _read_index(index_path)
     current = data.get(session_key, {})
@@ -44,10 +64,16 @@ def bind_active_task(
         "channel_type": channel_type,
         "chat_id": chat_id,
         "sender_id": sender_id,
+        "chat_name": chat_name if chat_name is not None else current.get("chat_name"),
         "active_task_id": task_id,
         "last_task_id": current.get("last_task_id"),
         "codex_thread_id": codex_thread_id if codex_thread_id is not None else current.get("codex_thread_id"),
         "active_turn_id": active_turn_id if active_turn_id is not None else current.get("active_turn_id"),
+        "last_absorbed_message_id": (
+            last_absorbed_message_id
+            if last_absorbed_message_id is not None
+            else current.get("last_absorbed_message_id")
+        ),
         "created_at": current.get("created_at", now),
         "updated_at": now,
     }

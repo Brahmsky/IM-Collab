@@ -35,6 +35,52 @@ The group chat is the only channel that needs context injection.
 - establish the initial group-context snapshot if the command needs it;
 - record the last absorbed group message boundary.
 
+The intended command grammar is:
+
+- `/new <instruction>`
+- `/new <time> <instruction>`
+
+`<time>` is a relative lookback window. Supported syntax should be:
+
+- `h`: hours, such as `6h`;
+- `d`: days, such as `3d`;
+- compound days plus hours, such as `2d6h`.
+
+Examples:
+
+- `/new 6h 帮我整理今天下午新增的需求`
+- `/new 3d 生成这三天讨论出来的项目复盘`
+- `/new 2d6h 根据最近两天半的上下文做交付方案`
+- `/new 根据最近一轮群聊做项目方案`
+
+For `/new <instruction>`, the initial group context window is:
+
+```text
+min(80 group messages, messages from now back to the previous /new boundary)
+```
+
+For `/new <time> <instruction>`, the initial group context window is:
+
+```text
+messages whose sent_at >= now - parsed(<time>)
+```
+
+This time window is an override. It should not depend on the previous `/new` boundary, because the user is explicitly saying how far back to look.
+
+Current implementation status:
+
+- `/new <instruction>` and `/new <time> <instruction>` are parsed by `bridge/group_session.py`;
+- group `/new` session keys use `feishu:<chat_id>:session:<message_id>`, so multiple sessions can exist under the same group;
+- `/new <instruction>` selects messages after the previous `/new` boundary, capped at 80 messages;
+- `/new <time> <instruction>` computes an absolute cutoff from the trigger message time and passes it to the Feishu history reader;
+- `bridge/lark_im.py` paginates Feishu history until the cutoff is reached;
+- confirmation cards carry the originating `session_key`, so clicking "start" resumes the same isolated session;
+- ordinary group follow-ups first look for the exact default group session, then fall back to the latest active `/new` session under the same group;
+- session bindings persist `last_absorbed_message_id` per group session;
+- active group follow-ups collect only the messages after `last_absorbed_message_id`, excluding the current trigger message;
+- the follow-up payload sent to Codex includes the user's current instruction plus only that delta group context;
+- after the turn is accepted, the binding advances `last_absorbed_message_id` to the current trigger message id.
+
 A normal group-chat continuation to the bot continues the active group session:
 
 - keep the same Codex execution thread for that group session;
@@ -48,24 +94,49 @@ Ordinary group messages that are not addressed to the bot should not automatical
 
 The group-chat context path has three separate responsibilities.
 
-`select_briefing_context` is the cheap context selector. It is implemented in `bridge/group_context_selector.py`. It uses structured message tags, attachments, and recent-tail preservation. It does not scan raw message text for important-looking keywords.
+`select_briefing_context` is the cheap context limiter. It is implemented in `bridge/group_context_selector.py`. It only uses runtime-stable signals: attachments and recent-tail preservation. It does not scan raw message text for important-looking keywords, and it must not rely on fixture-only `tags`.
 
-`LangExtract + DeepSeek V4 Flash` is the optional semantic evidence extractor. It is implemented in `bridge/group_briefing_extractors/langextract_deepseek.py` and enabled with `brief_extractor="langextract-deepseek"`. The optional dependency is recorded in `requirements-langextract.txt` as `langextract[openai]==1.3.0`.
+`LangExtract + DeepSeek V4 Pro` is the semantic evidence extractor. It is implemented in `bridge/group_briefing_extractors/langextract_deepseek.py` and enabled with `brief_extractor="langextract-deepseek"`. The default model is `deepseek-v4-pro` with high reasoning effort. The optional dependency is recorded in `requirements-langextract.txt` as `langextract[openai]==1.3.0`.
 
 `group_briefing` is the source-grounded briefing layer. It turns selected messages or extracted evidence into `brief.json` and `brief.md`, so Codex can use a traceable evidence layer instead of raw noisy group chat.
+
+Packaging boundary:
+
+- Feishu messages are first collected as message dictionaries from `lark-cli`.
+- The LangExtract path converts those dictionaries into plain source text with one line per message:
+
+```text
+[message_id] sender sent_at: content [附件:type:name]
+```
+
+- That source text, the extractor prompt, and examples are sent to DeepSeek through LangExtract's OpenAI-compatible provider.
+- DeepSeek does not receive Codex task files directly.
+- Codex later receives the task prompt plus project files such as `brief.json`, `brief.md`, and optionally `evidence.json`.
+
+So the flow is:
+
+```text
+Feishu messages
+-> source text for LangExtract
+-> DeepSeek evidence extraction
+-> evidence.json
+-> brief.json / brief.md
+-> Codex task execution
+```
+
+The default group-chat path now uses `brief_extractor="langextract-deepseek"`. The legacy `rules` path remains available only as an explicit fallback for tests, p2p/offline operation, or controlled local fixtures.
 
 ## Current Selector Logic
 
 `select_briefing_context(messages, max_messages=45, recent_tail=12)` behaves as follows:
 
 - return all messages if they already fit the budget;
-- include messages with priority tags such as `formal_notice`, `deadline`, `requirement`, `decision`, `correction`, `conflict`, `open_question`, `latest`, `final`, `attachment`, `template`, `deliverable`, or `bot_request`;
 - include messages with attachments;
 - always preserve the most recent `recent_tail` messages;
-- if still over budget, rank non-recent candidates by tag weight and attachment presence;
+- if still over budget, keep the most recent attachment-bearing non-tail candidates;
 - restore original chronological order before returning.
 
-This is not semantic retrieval. It is structured filtering plus recency. Its quality depends on upstream message tags and attachment metadata. The semantic step is the optional LangExtract extractor after selection.
+This is not semantic retrieval. It is attachment preservation plus recency. The semantic step is the optional LangExtract extractor after selection. Fixture `tags` may remain in scenario data for evaluation commentary, but production selection must not depend on them.
 
 ## Existing Evaluation Result
 
@@ -89,7 +160,7 @@ Measured results:
 | `--select-context --max-context-messages 45 --recent-tail 12` | 21 | 7 / 16 | 0.44 |
 | `--select-context --max-context-messages 60 --recent-tail 16` | 50 | 13 / 16 | 0.81 |
 
-The best tested path is conservative selection with 60 messages and 16 recent-tail messages, then LangExtract + DeepSeek V4 Flash evidence extraction.
+These numbers are historical results from the earlier selector experiment. The current product direction is stricter: selector should not pretend to understand group-chat importance from fixture-only tags. Real semantic extraction belongs in LangExtract/evidence extraction, not in hand-maintained tag priority lists.
 
 ## Required State Model
 
@@ -101,11 +172,11 @@ To match the product semantics, the durable state needs these fields:
 - session id to last absorbed group message id;
 - task/artifact ids generated by each Codex turn.
 
-The current code already has `task-bindings.json` and Codex thread binding, but the group-session model is still too coarse: the current `build_golembot_session_key()` path effectively binds one session key to one group/channel unless an additional session id is introduced.
+The current code uses `task-bindings.json` for this binding. Group `/new` sessions already include a session id in the key, and `last_absorbed_message_id` is persisted on that same binding entry. A future refinement could split this into a first-class group-session store, but the current binding model now covers the required product semantics.
 
 ## Non-Goals
 
 - The GUI should not be responsible for long-term context.
 - The GUI should not replay its visible chat history into Codex.
 - The frontend should not expose internal status, task ids, event logs, raw control JSON, or timeline internals as normal product UI.
-- The default path should not silently enable paid external extraction. LangExtract + DeepSeek remains an explicit backend choice.
+- Paid external extraction should be visible in backend configuration and logs. For group-chat task creation, LangExtract + DeepSeek is now the default semantic extractor; p2p and offline test paths can still use the explicit `rules` fallback.

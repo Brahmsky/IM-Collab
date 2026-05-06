@@ -2,23 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-PRIORITY_TAGS = {
-    "formal_notice",
-    "deadline",
-    "budget_rule",
-    "requirement",
-    "decision",
-    "correction",
-    "conflict",
-    "open_question",
-    "latest",
-    "final",
-    "attachment",
-    "template",
-    "deliverable",
-    "bot_request",
-}
-
 def select_briefing_context(
     messages: list[dict[str, Any]],
     max_messages: int = 45,
@@ -32,7 +15,7 @@ def select_briefing_context(
     protected_keys: set[str] = set()
 
     for message in messages:
-        if _is_priority_message(message):
+        if _has_real_runtime_signal(message):
             selected[_message_key(message)] = message
 
     for message in messages[-max(recent_tail, 0) :]:
@@ -44,10 +27,7 @@ def select_briefing_context(
     return sorted(selected.values(), key=lambda message: _message_index(messages, message))
 
 
-def _is_priority_message(message: dict[str, Any]) -> bool:
-    tags = {str(tag) for tag in message.get("tags", []) if isinstance(tag, str)}
-    if tags & PRIORITY_TAGS:
-        return True
+def _has_real_runtime_signal(message: dict[str, Any]) -> bool:
     if message.get("attachments"):
         return True
     return False
@@ -61,17 +41,8 @@ def _trim_selected(
     protected = {key: message for key, message in selected.items() if key in protected_keys}
     remaining_budget = max(max_messages - len(protected), 0)
     candidates = {key: message for key, message in selected.items() if key not in protected_keys}
-    ranked = sorted(candidates.items(), key=lambda item: (_priority_score(item[1]), str(item[1].get("sent_at") or "")), reverse=True)
+    ranked = sorted(candidates.items(), key=lambda item: str(item[1].get("sent_at") or ""), reverse=True)
     return {**dict(ranked[:remaining_budget]), **protected}
-
-
-def _priority_score(message: dict[str, Any]) -> int:
-    tags = {str(tag) for tag in message.get("tags", []) if isinstance(tag, str)}
-    score = 0
-    score += 5 * len(tags & {"formal_notice", "deadline", "correction", "conflict", "final", "latest"})
-    score += 4 * len(tags & {"budget_rule", "requirement", "decision", "open_question", "bot_request"})
-    score += 3 if message.get("attachments") else 0
-    return score
 
 
 def _message_key(message: dict[str, Any]) -> str:

@@ -51,9 +51,9 @@ def test_build_codex_task_prompt_is_file_protocol_only(tmp_path: Path) -> None:
     assert "request.md" in prompt
     assert "plan.json" in prompt
     assert "items" in prompt
-    assert "Do not force every task into document/slides/whiteboard" in prompt
-    assert "Do not call Feishu" in prompt
-    assert "Do not modify repository source files" in prompt
+    assert "不要因为实现方便，就强行把所有任务都产出成 `document/slides/whiteboard`" in prompt
+    assert "这一步不要调用飞书" in prompt
+    assert "不要修改仓库里的源代码文件" in prompt
 
 
 def test_build_codex_task_prompt_prefers_group_brief_when_present(tmp_path: Path) -> None:
@@ -65,7 +65,7 @@ def test_build_codex_task_prompt_prefers_group_brief_when_present(tmp_path: Path
 
     assert "brief.json" in prompt
     assert "brief.md" in prompt
-    assert "source-grounded group brief" in prompt
+    assert "有来源依据的群聊 brief" in prompt
 
 
 def test_build_codex_task_prompt_includes_control_log_when_present(tmp_path: Path) -> None:
@@ -79,7 +79,7 @@ def test_build_codex_task_prompt_includes_control_log_when_present(tmp_path: Pat
 
     assert "control.jsonl" in prompt
     assert "append_instruction" in prompt
-    assert "latest operator and group-chat instructions" in prompt
+    assert "最新的操作员补充和群聊指令" in prompt
 
 
 def test_build_codex_task_prompt_includes_existing_artifacts_for_followup(tmp_path: Path) -> None:
@@ -100,7 +100,7 @@ def test_build_codex_task_prompt_includes_existing_artifacts_for_followup(tmp_pa
 
     assert "artifacts.json" in prompt
     assert "https://feishu/slides" in prompt
-    assert "Update existing Feishu artifacts" in prompt
+    assert "优先基于这些现有工件继续修改" in prompt
 
 
 def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Path) -> None:
@@ -116,7 +116,7 @@ def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Pa
     assert "--ask-for-approval" not in args
     assert "--add-dir" in args
     assert task_dir.as_posix() in args
-    assert args[-1].startswith("You are generating local office artifacts")
+    assert args[-1].startswith("你正在为 IM-Collab 任务生成本地办公产物。")
 
 
 def test_run_codex_task_validates_outputs_and_marks_completed(tmp_path: Path) -> None:

@@ -33,8 +33,19 @@ class EventConsumer:
         processed_count = 0
 
         for event_path in sorted(self.config.event_dir.glob(self.config.glob_pattern)):
+            if event_path.name.startswith("."):
+                continue
+            if event_path.resolve() == self.config.state_path.resolve():
+                continue
             payload = _read_json(event_path)
-            event_id, sender_open_id = _event_identity(payload)
+            try:
+                event_id, sender_open_id = _event_identity(payload)
+            except Exception:
+                event_id = event_path.name
+                _append_unique(state, "failed_message_ids", event_id)
+                self._move_failed(event_path)
+                self._save_state(state)
+                continue
             if event_id in state["processed_message_ids"]:
                 continue
             if event_id in state["failed_message_ids"]:

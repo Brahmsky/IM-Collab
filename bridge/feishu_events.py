@@ -14,6 +14,7 @@ class ImEvent:
     task_id: str
     message_id: str
     chat_id: str
+    chat_name: str
     chat_type: str
     sender_open_id: str
     message_type: str
@@ -39,6 +40,7 @@ def parse_im_event(payload: dict[str, Any]) -> ImEvent:
             task_id=f"im-{_safe_id(message_id)}",
             message_id=message_id,
             chat_id=_require(payload, "chat_id"),
+            chat_name=str(payload.get("chat_name") or payload.get("chat", {}).get("name") or ""),
             chat_type=str(payload.get("chat_type", "")),
             sender_open_id=str(payload.get("sender_id", "")),
             message_type=str(payload.get("message_type", "")),
@@ -56,6 +58,7 @@ def parse_im_event(payload: dict[str, Any]) -> ImEvent:
         task_id=f"im-{_safe_id(message_id)}",
         message_id=message_id,
         chat_id=_require(message, "chat_id"),
+        chat_name=str(message.get("chat_name") or event.get("chat", {}).get("name") or ""),
         chat_type=str(message.get("chat_type", "")),
         sender_open_id=str(sender_id.get("open_id", "")),
         message_type=str(message.get("message_type", "")),

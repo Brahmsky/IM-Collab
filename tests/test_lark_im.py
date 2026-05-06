@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 from pathlib import Path
 
@@ -111,7 +112,7 @@ def test_reply_card_to_message_uses_card_file_and_extracts_json(tmp_path: Path) 
     assert result["response"]["api"][0]["url"].endswith("/reply")
 
 
-def test_build_list_messages_args_reads_group_context_as_user() -> None:
+def test_build_list_messages_args_reads_group_context_as_user_by_default() -> None:
     args = build_list_messages_args("oc_group", page_size=20)
 
     assert args == [
@@ -156,6 +157,49 @@ def test_list_chat_messages_returns_recent_messages_oldest_first() -> None:
 
     assert seen_args[:3] == ["lark-cli", "im", "+chat-messages-list"]
     assert [message["message_id"] for message in messages] == ["om_old", "om_new"]
+
+
+def test_list_chat_messages_paginates_until_cutoff_time() -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(args: list[str]) -> str:
+        calls.append(args)
+        if len(calls) == 1:
+            return json.dumps(
+                {
+                    "ok": True,
+                    "data": {
+                        "has_more": True,
+                        "page_token": "page_2",
+                        "messages": [
+                            {"message_id": "om_new", "content": "新", "create_time": "1778040000000"},
+                            {"message_id": "om_mid", "content": "中", "create_time": "1778036400000"},
+                        ],
+                    },
+                }
+            )
+        return json.dumps(
+            {
+                "ok": True,
+                "data": {
+                    "has_more": False,
+                    "messages": [
+                        {"message_id": "om_old", "content": "旧", "create_time": "1777950000000"},
+                    ],
+                },
+            }
+        )
+
+    messages = list_chat_messages(
+        "oc_group",
+        page_size=2,
+        cutoff_after=datetime.fromtimestamp(1778030000, tz=UTC),
+        runner=fake_run,
+    )
+
+    assert [message["message_id"] for message in messages] == ["om_mid", "om_new"]
+    assert "--page-token" in calls[1]
+    assert calls[1][calls[1].index("--page-token") + 1] == "page_2"
 
 
 def test_build_delivery_markdown_includes_artifact_links() -> None:

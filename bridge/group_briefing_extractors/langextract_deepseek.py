@@ -3,9 +3,9 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-DEFAULT_MODEL_ID = "deepseek-v4-flash"
+DEFAULT_MODEL_ID = "deepseek-v4-pro"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
-EXTRACTOR_NAME = "langextract-deepseek-v4-flash"
+EXTRACTOR_NAME = "langextract-deepseek-v4-pro-high"
 
 SUPPORTED_KINDS = {
     "deadline",
@@ -98,7 +98,9 @@ def extract_evidence(
         provider_kwargs={
             "api_key": api_key,
             "base_url": base_url,
+            "reasoning_effort": "high",
             "temperature": 0.0,
+            "timeout": 60,
         },
     )
     extract_kwargs = _prompt_validation_kwargs(lx)

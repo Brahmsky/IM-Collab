@@ -16,7 +16,7 @@ from bridge.group_briefing_extractors.langextract_deepseek import DEFAULT_BASE_U
 from bridge.group_context_selector import select_briefing_context
 from bridge.lark_im import build_delivery_markdown
 from bridge.local_codex_smoke import run_local_smoke
-from bridge.task_binding import bind_active_task, clear_active_task
+from bridge.task_binding import bind_active_task, clear_active_task, get_task_binding
 from bridge.task_control import read_control_commands
 from bridge.task_protocol import create_task, read_artifacts, write_status
 
@@ -27,15 +27,17 @@ def run_golembot_office_task(
     chat_id: str,
     sender_id: str,
     tasks_root: Path,
+    chat_name: str = "",
     task_id: str | None = None,
     generator: str = "local",
     publish: bool = False,
     runner: Any | None = None,
     conversation_context: list[dict[str, Any]] | None = None,
     codex_backend: AppServerTaskBackend | None = None,
-    brief_extractor: str = "rules",
+    brief_extractor: str = "langextract-deepseek",
     brief_api_key: str | None = None,
     evidence_extractor: Any | None = None,
+    absorbed_message_id: str | None = None,
 ) -> dict[str, Any]:
     task_id = task_id or _task_id_from_session(session_key)
     task_dir = tasks_root / task_id
@@ -66,15 +68,27 @@ def run_golembot_office_task(
         chat_id=chat_id,
         channel_type=session_key.split(":", 1)[0],
         sender_id=sender_id,
+        chat_name=chat_name or None,
     )
 
     if brief is not None and brief_needs_confirmation(brief):
         reply_markdown = render_confirmation_markdown(brief)
         (task_dir / "confirmation.md").write_text(reply_markdown, encoding="utf-8")
         (task_dir / "confirmation_card.json").write_text(
-            _json_dumps(build_confirmation_card(brief, task_id=task_id)),
+            _json_dumps(build_confirmation_card(brief, task_id=task_id, session_key=session_key)),
             encoding="utf-8",
         )
+        if absorbed_message_id is not None:
+            bind_active_task(
+                bindings_path,
+                session_key=session_key,
+                task_id=task_id,
+                chat_id=chat_id,
+                channel_type=session_key.split(":", 1)[0],
+                sender_id=sender_id,
+                chat_name=chat_name or None,
+                last_absorbed_message_id=absorbed_message_id,
+            )
         write_status(task_dir, "waiting_for_user", error="群聊旁批汇总发现冲突或待确认问题，需要确认后再生成。")
         return {
             "task_id": task_id,
@@ -98,8 +112,10 @@ def run_golembot_office_task(
                     chat_id=chat_id,
                     channel_type=session_key.split(":", 1)[0],
                     sender_id=sender_id,
+                    chat_name=chat_name or None,
                     codex_thread_id=turn.thread_id,
                     active_turn_id=turn.turn_id,
+                    last_absorbed_message_id=absorbed_message_id,
                 ),
             )
             if codex_turn is not None:
@@ -110,16 +126,36 @@ def run_golembot_office_task(
                     chat_id=chat_id,
                     channel_type=session_key.split(":", 1)[0],
                     sender_id=sender_id,
+                    chat_name=chat_name or None,
                     codex_thread_id=codex_turn.thread_id,
                     active_turn_id=codex_turn.turn_id,
+                    last_absorbed_message_id=absorbed_message_id,
                 )
         if publish:
             publish_task_artifacts_to_feishu(task_dir, runner=runner)
         artifacts = read_artifacts(task_dir)
     except Exception as exc:
         write_status(task_dir, "failed", error=f"GolemBot office loop failed: {exc}")
+        try:
+            clear_active_task(bindings_path, session_key)
+        except Exception:
+            pass
         raise
 
+    if absorbed_message_id is not None:
+        current_binding = get_task_binding(bindings_path, session_key) or binding
+        bind_active_task(
+            bindings_path,
+            session_key=session_key,
+            task_id=task_id,
+            chat_id=chat_id,
+            channel_type=session_key.split(":", 1)[0],
+            sender_id=sender_id,
+            chat_name=chat_name or None,
+            codex_thread_id=current_binding.get("codex_thread_id"),
+            active_turn_id=current_binding.get("active_turn_id"),
+            last_absorbed_message_id=absorbed_message_id,
+        )
     clear_active_task(bindings_path, session_key)
     return {
         "task_id": task_id,

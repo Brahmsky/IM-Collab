@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from bridge.group_briefing_extractors.langextract_deepseek import (
+    DEFAULT_MODEL_ID,
     build_source_text,
     convert_annotated_document_to_evidence,
     extract_evidence,
@@ -118,7 +119,7 @@ def test_convert_annotated_document_to_evidence_maps_char_interval_to_message_id
             "source_text": "PPT 改成 6-8 页。",
             "source_message_ids": ["om_2"],
             "confidence": "high",
-            "extractor": "langextract-deepseek-v4-flash",
+            "extractor": "langextract-deepseek-v4-pro-high",
         }
     ]
 
@@ -153,7 +154,11 @@ def test_convert_annotated_document_prefers_exact_source_text_match_over_fuzzy_i
     assert evidence[0]["source_message_ids"] == ["om_1"]
 
 
-def test_extract_evidence_uses_openai_provider_with_deepseek_v4_flash() -> None:
+def test_default_deepseek_model_is_v4_pro() -> None:
+    assert DEFAULT_MODEL_ID == "deepseek-v4-pro"
+
+
+def test_extract_evidence_uses_openai_provider_with_deepseek_v4_pro_high_reasoning() -> None:
     document = FakeDocument(
         [
             FakeExtraction(
@@ -174,12 +179,14 @@ def test_extract_evidence_uses_openai_provider_with_deepseek_v4_flash() -> None:
     )
 
     assert fake_lx.factory.config_kwargs == {
-        "model_id": "deepseek-v4-flash",
+        "model_id": "deepseek-v4-pro",
         "provider": "OpenAILanguageModel",
         "provider_kwargs": {
             "api_key": "sk-test",
             "base_url": "https://api.deepseek.com",
+            "reasoning_effort": "high",
             "temperature": 0.0,
+            "timeout": 60,
         },
     }
     assert fake_lx.extract_kwargs["config"] == {"model_config": fake_lx.factory.config_kwargs}

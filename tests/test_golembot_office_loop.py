@@ -10,6 +10,18 @@ from bridge.task_protocol import read_artifacts, read_status
 from tests.test_codex_task_runner import write_codex_outputs
 
 
+def _fake_evidence(messages, **kwargs):
+    return [
+        {
+            "kind": "document_requirement",
+            "claim": str(messages[0].get("content") or "群聊上下文") if messages else "群聊上下文",
+            "source_message_ids": [str(messages[0].get("message_id") or "om_1")] if messages else ["om_1"],
+            "confidence": "high",
+            "extractor": "fake-langextract",
+        }
+    ]
+
+
 def test_run_golembot_office_task_creates_task_and_returns_reply(tmp_path: Path) -> None:
     result = run_golembot_office_task(
         message="根据群聊生成项目方案、PPT 和白板",
@@ -45,12 +57,35 @@ def test_run_golembot_office_task_writes_group_context_to_request(tmp_path: Path
             {"message_id": "om_1", "sender_id": "ou_a", "content": "我们主打飞书群聊入口。"},
             {"message_id": "om_2", "sender_id": "ou_b", "content": "PPT 要突出多端协同。"},
         ],
+        evidence_extractor=_fake_evidence,
     )
 
     request = (tmp_path / "group-task" / "request.md").read_text(encoding="utf-8")
     assert "## Conversation Context" in request
     assert "我们主打飞书群聊入口。" in request
     assert "PPT 要突出多端协同。" in request
+
+
+def test_run_golembot_office_task_persists_last_absorbed_group_message_boundary(tmp_path: Path) -> None:
+    run_golembot_office_task(
+        message="根据刚才讨论生成方案和 PPT",
+        session_key="feishu:oc_group:session:om_new",
+        chat_id="oc_group",
+        sender_id="ou_456",
+        tasks_root=tmp_path,
+        task_id="group-boundary-task",
+        generator="local",
+        publish=False,
+        conversation_context=[
+            {"message_id": "om_1", "sender_id": "ou_a", "content": "我们主打飞书群聊入口。"},
+            {"message_id": "om_2", "sender_id": "ou_b", "content": "PPT 要突出多端协同。"},
+        ],
+        absorbed_message_id="om_trigger",
+        evidence_extractor=_fake_evidence,
+    )
+
+    binding = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_group:session:om_new")
+    assert binding["last_absorbed_message_id"] == "om_trigger"
 
 
 def test_run_golembot_office_task_writes_source_grounded_group_brief(tmp_path: Path) -> None:
@@ -72,6 +107,7 @@ def test_run_golembot_office_task_writes_source_grounded_group_brief(tmp_path: P
             },
             {"message_id": "om_2", "sender_id": "ou_a", "content": "PPT 控制在 8 页，文档用 Markdown。"},
         ],
+        evidence_extractor=_fake_evidence,
     )
 
     task_dir = tmp_path / "brief-task"
@@ -170,7 +206,11 @@ def test_run_golembot_office_task_waits_for_user_when_external_brief_has_conflic
     assert (task_dir / "confirmation.md").exists()
     card = json.loads((task_dir / "confirmation_card.json").read_text(encoding="utf-8"))
     assert card["header"]["title"]["content"] == "请确认群聊需求"
-    assert card["elements"][-2]["value"] == {"action": "start_task", "task_id": "waiting-brief-task"}
+    assert card["elements"][-2]["value"] == {
+        "action": "start_task",
+        "task_id": "waiting-brief-task",
+        "session_key": "feishu:oc_group",
+    }
     assert "页数要求存在冲突" in result["reply_markdown"]
     assert result["state"] == "waiting_for_user"
 
@@ -306,6 +346,43 @@ def test_run_golembot_office_task_reuses_existing_app_server_thread(tmp_path: Pa
     assert binding["codex_thread_id"] == "new_thread"
 
 
+def test_run_golembot_office_task_clears_active_binding_after_failure(tmp_path: Path) -> None:
+    class FailingBackend:
+        def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+            return CodexTurn(thread_id="thread_fail", turn_id="turn_fail")
+
+        def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+            raise RuntimeError("boom")
+
+        def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict:
+            return {}
+
+        def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
+            return {}
+
+    try:
+        run_golembot_office_task(
+            message="生成项目方案",
+            session_key="feishu:oc_123",
+            chat_id="oc_123",
+            sender_id="ou_456",
+            tasks_root=tmp_path,
+            task_id="gb-failed-task",
+            generator="app-server",
+            publish=False,
+            codex_backend=FailingBackend(),
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected RuntimeError")
+
+    binding = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")
+    assert binding["active_task_id"] is None
+    assert binding["last_task_id"] == "gb-failed-task"
+    assert read_status(tmp_path / "gb-failed-task")["state"] == "failed"
+
+
 def test_completed_task_with_new_control_runs_codex_again_on_same_task(tmp_path: Path) -> None:
     task_dir = tmp_path / "gb-followup-existing-task"
     task_dir.mkdir(parents=True)
@@ -417,6 +494,39 @@ def test_run_golembot_office_task_exposes_active_turn_while_app_server_runs(tmp_
     assert binding_during_wait["active_turn_id"] == "turn_live"
     assert final_binding["codex_thread_id"] == "thread_live"
     assert final_binding["active_turn_id"] is None
+
+
+def test_run_golembot_office_task_clears_active_binding_when_app_server_fails(tmp_path: Path) -> None:
+    class FakeAppServerBackend:
+        def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+            return CodexTurn(thread_id="thread_live", turn_id="turn_live")
+
+        def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+            raise RuntimeError("codex turn failed")
+
+    try:
+        run_golembot_office_task(
+            message="生成项目方案",
+            session_key="feishu:oc_123",
+            chat_id="oc_123",
+            sender_id="ou_456",
+            tasks_root=tmp_path,
+            task_id="gb-failed-turn-task",
+            generator="app-server",
+            publish=False,
+            codex_backend=FakeAppServerBackend(),
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("expected run_golembot_office_task to raise")
+
+    binding = get_task_binding(tmp_path / "task-bindings.json", "feishu:oc_123")
+    status = read_status(tmp_path / "gb-failed-turn-task")
+    assert status["state"] == "failed"
+    assert binding["active_task_id"] is None
+    assert binding["active_turn_id"] is None
+    assert binding["last_task_id"] == "gb-failed-turn-task"
 
 
 def test_resumed_waiting_task_includes_natural_language_controls_in_request(tmp_path: Path) -> None:

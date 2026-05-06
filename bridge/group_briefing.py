@@ -135,7 +135,7 @@ def render_confirmation_markdown(brief: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_confirmation_card(brief: dict[str, Any], task_id: str) -> dict[str, Any]:
+def build_confirmation_card(brief: dict[str, Any], task_id: str, session_key: str | None = None) -> dict[str, Any]:
     uncertain = [
         annotation
         for annotation in brief.get("annotations", [])
@@ -150,19 +150,24 @@ def build_confirmation_card(brief: dict[str, Any], task_id: str) -> dict[str, An
     for annotation in uncertain:
         refs = ", ".join(annotation["evidence_message_ids"])
         elements.append({"tag": "markdown", "content": f"- {annotation['claim']}\\n  引用: {refs}"})
+    start_value = {"action": "start_task", "task_id": task_id}
+    append_value = {"action": "append_requirement", "task_id": task_id}
+    if session_key:
+        start_value["session_key"] = session_key
+        append_value["session_key"] = session_key
     elements.extend(
         [
             {
                 "tag": "button",
                 "text": {"tag": "plain_text", "content": "开始执行"},
                 "type": "primary",
-                "value": {"action": "start_task", "task_id": task_id},
+                "value": start_value,
             },
             {
                 "tag": "button",
                 "text": {"tag": "plain_text", "content": "补充要求"},
                 "type": "default",
-                "value": {"action": "append_requirement", "task_id": task_id},
+                "value": append_value,
             },
         ]
     )

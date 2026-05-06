@@ -46,6 +46,7 @@ def process_event_file(
         chat_id=parsed.chat_id,
         channel_type="feishu",
         sender_id=parsed.sender_open_id,
+        chat_name=parsed.chat_name or None,
     )
     delivery = None
     if run_delivery:

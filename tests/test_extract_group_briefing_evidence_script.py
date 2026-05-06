@@ -55,8 +55,9 @@ def test_extract_group_briefing_evidence_script_can_render_selected_context(tmp_
         capture_output=True,
     )
 
-    assert "source_messages=45" in result.stdout
+    assert "source_messages=29" in result.stdout
     payload = json.loads(output_path.read_text(encoding="utf-8"))
-    assert "[om_grant_030]" in payload["text"]
+    assert "[om_grant_001]" not in payload["text"]
+    assert "[om_grant_008]" in payload["text"]
     assert "[om_grant_064]" in payload["text"]
     assert "[om_grant_071]" in payload["text"]

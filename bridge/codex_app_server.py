@@ -139,21 +139,25 @@ class AppServerClient:
                     if on_idle:
                         on_idle()
                     continue
-            if message.get("method") != "turn/completed":
+            completed = _completion_event(message)
+            if completed is None:
                 if on_event:
                     on_event(message)
                 continue
-            params = message.get("params") if isinstance(message.get("params"), dict) else {}
-            if params.get("threadId") != thread_id and params.get("thread_id") != thread_id:
+            params = completed
+            completed_thread_id = params.get("threadId") or params.get("thread_id")
+            if completed_thread_id != thread_id:
                 continue
             turn = params.get("turn") if isinstance(params.get("turn"), dict) else {}
-            if turn.get("id") != turn_id and turn.get("turnId") != turn_id and turn.get("turn_id") != turn_id:
+            completed_turn_id = turn.get("id") or turn.get("turnId") or turn.get("turn_id")
+            completed_turn_id = completed_turn_id or params.get("turnId") or params.get("turn_id")
+            if completed_turn_id != turn_id:
                 continue
-            status = str(turn.get("status") or "")
+            status = str(turn.get("status") or params.get("status") or "")
             if status == "failed":
                 error = turn.get("error") if isinstance(turn.get("error"), dict) else {}
                 raise RuntimeError(str(error.get("message") or "codex turn failed"))
-            return turn
+            return turn or params
         raise TimeoutError(f"timed out waiting for Codex turn {turn_id}")
 
     def _read_transport_message(self, timeout_seconds: float | None = None) -> dict[str, Any] | None:
@@ -167,6 +171,28 @@ class AppServerClient:
         return message if isinstance(message, dict) else {"value": message}
 
 
+def _completion_event(message: dict[str, Any]) -> dict[str, Any] | None:
+    params = message.get("params") if isinstance(message.get("params"), dict) else {}
+    nested = _nested_event(params)
+    event_type = str(message.get("type") or params.get("type") or nested.get("type") or "")
+    if message.get("method") != "turn/completed" and event_type not in {"turn.completed", "turn/completed"}:
+        return None
+    merged = {**params, **nested}
+    if event_type and "type" not in merged:
+        merged["type"] = event_type
+    if "status" not in merged and event_type in {"turn.completed", "turn/completed"}:
+        merged["status"] = "completed"
+    return merged
+
+
+def _nested_event(params: dict[str, Any]) -> dict[str, Any]:
+    for key in ("msg", "event", "item"):
+        value = params.get(key)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
 @dataclass(frozen=True)
 class CodexTurn:
     thread_id: str
@@ -178,7 +204,8 @@ class CodexAppServerBackend:
         self.client = client
         self.project_root = project_root
 
-    def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+    def start_task(self, task_dir: Path, thread_id: str | None = None, input_text: str | None = None) -> CodexTurn:
+        resolved_task_dir = task_dir.resolve()
         if thread_id is None:
             thread = self._start_thread()
             thread_id = _required_thread_id(thread)
@@ -194,12 +221,12 @@ class CodexAppServerBackend:
             "turn/start",
             {
                 "threadId": thread_id,
-                "input": _text_input(build_codex_task_prompt(task_dir)),
+                "input": _text_input(input_text if input_text is not None else build_codex_task_prompt(task_dir)),
                 "cwd": self.project_root.as_posix(),
                 "approvalPolicy": "never",
                 "sandboxPolicy": {
                     "type": "workspaceWrite",
-                    "writableRoots": [self.project_root.as_posix(), task_dir.as_posix()],
+                    "writableRoots": [self.project_root.as_posix(), resolved_task_dir.as_posix()],
                     "networkAccess": True,
                 },
             },

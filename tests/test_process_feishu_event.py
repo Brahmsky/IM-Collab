@@ -51,6 +51,7 @@ def test_process_event_file_is_idempotent_for_same_message(tmp_path: Path) -> No
                 "type": "im.message.receive_v1",
                 "message_id": "om_123",
                 "chat_id": "oc_456",
+                "chat_name": "IM-Collab 群聊测试",
                 "chat_type": "group",
                 "message_type": "text",
                 "content": "生成项目方案",
@@ -77,6 +78,7 @@ def test_process_event_file_can_run_delivery_flow(tmp_path: Path) -> None:
                 "type": "im.message.receive_v1",
                 "message_id": "om_123",
                 "chat_id": "oc_456",
+                "chat_name": "IM-Collab 群聊测试",
                 "chat_type": "group",
                 "message_type": "text",
                 "content": "生成项目方案",
@@ -114,6 +116,7 @@ def test_process_event_file_can_run_delivery_flow(tmp_path: Path) -> None:
     binding = get_task_binding(tmp_path / "tasks" / "task-bindings.json", "feishu:oc_456")
     assert binding["active_task_id"] is None
     assert binding["last_task_id"] == "im-om_123"
+    assert binding["chat_name"] == "IM-Collab 群聊测试"
 
 
 def test_process_event_file_can_use_injected_codex_generator(tmp_path: Path) -> None:

@@ -8,14 +8,14 @@ from typing import Callable, Protocol
 
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, CodexTurn, StdioAppServerTransport
 from bridge.codex_task_runner import REQUIRED_CODEX_OUTPUTS, _validate_artifact_item_paths
-from bridge.chat_messages import append_assistant_message_from_artifacts
-from bridge.task_protocol import read_artifacts
+from bridge.chat_messages import append_assistant_message_from_artifacts, append_chat_message, seed_chat_messages_from_task
+from bridge.task_protocol import read_artifacts, read_status
 from bridge.task_control import read_control_commands
 from bridge.task_protocol import write_status
 
 
 class AppServerTaskBackend(Protocol):
-    def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn: ...
+    def start_task(self, task_dir: Path, thread_id: str | None = None, input_text: str | None = None) -> CodexTurn: ...
 
     def wait_for_task(self, thread_id: str, turn_id: str, on_idle: Callable[[], None] | None = None) -> dict: ...
 
@@ -43,7 +43,7 @@ def run_codex_app_server_task(
 
     try:
         (task_dir / "codex-stream.jsonl").unlink(missing_ok=True)
-        turn = backend.start_task(task_dir, thread_id=thread_id)
+        turn = _start_backend_task(backend, task_dir, thread_id=thread_id)
         if turn.turn_id is None:
             raise RuntimeError("codex app-server did not return an active turn id")
         if on_turn_started:
@@ -60,7 +60,14 @@ def run_codex_app_server_task(
         process_controls()
         _wait_for_task(backend, turn, process_controls, task_dir=task_dir)
         _validate_outputs(task_dir)
-        append_assistant_message_from_artifacts(task_dir, read_artifacts(task_dir))
+        seed_chat_messages_from_task(
+            task_dir,
+            created_at=str(read_status(task_dir).get("created_at") or ""),
+        )
+        if thread_id and _append_assistant_message_from_stream(task_dir):
+            pass
+        else:
+            append_assistant_message_from_artifacts(task_dir, read_artifacts(task_dir))
     except Exception as exc:
         write_status(task_dir, "failed", error=f"Codex app-server task failed: {exc}")
         raise
@@ -78,6 +85,27 @@ def _validate_outputs(task_dir: Path) -> None:
         if not path.exists():
             raise FileNotFoundError(f"missing Codex output: {path}")
     _validate_artifact_item_paths(read_artifacts(task_dir), task_dir=task_dir)
+
+
+def _start_backend_task(backend: AppServerTaskBackend, task_dir: Path, thread_id: str | None) -> CodexTurn:
+    input_text = _latest_append_instruction_text(task_dir) if thread_id else None
+    params = inspect.signature(backend.start_task).parameters
+    if "input_text" in params:
+        return backend.start_task(task_dir, thread_id=thread_id, input_text=input_text)
+    return backend.start_task(task_dir, thread_id=thread_id)
+
+
+def _latest_append_instruction_text(task_dir: Path) -> str | None:
+    for command in reversed(read_control_commands(task_dir)):
+        if command.get("type") != "append_instruction":
+            continue
+        payload = command.get("payload") if isinstance(command.get("payload"), dict) else {}
+        text = payload.get("codex_input_text")
+        if not isinstance(text, str) or not text.strip():
+            text = payload.get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return None
 
 
 def _wait_for_task(
@@ -119,6 +147,29 @@ def _append_codex_stream_event(task_dir: Path, event: dict) -> None:
     payload = {"timestamp": datetime.now(UTC).isoformat(), "text": text}
     with (task_dir / "codex-stream.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _append_assistant_message_from_stream(task_dir: Path) -> dict | None:
+    text = _latest_codex_stream_text(task_dir)
+    if not text:
+        return None
+    return append_chat_message(task_dir, "assistant", text, source="codex_stream")
+
+
+def _latest_codex_stream_text(task_dir: Path) -> str:
+    path = task_dir / "codex-stream.jsonl"
+    if not path.is_file():
+        return ""
+    for raw in reversed(path.read_text(encoding="utf-8").splitlines()):
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        text = str(payload.get("text") or "").strip() if isinstance(payload, dict) else ""
+        if not text or text.startswith("Under-development features enabled:"):
+            continue
+        return text
+    return ""
 
 
 def _extract_codex_event_text(event: dict) -> str:

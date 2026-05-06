@@ -116,6 +116,34 @@ def test_build_confirmation_card_contains_start_action_and_message_refs_from_ext
     assert {"tag": "button", "text": {"tag": "plain_text", "content": "开始执行"}, "type": "primary", "value": {"action": "start_task", "task_id": "im-om_123"}} in card["elements"]
 
 
+def test_build_confirmation_card_can_preserve_session_key() -> None:
+    brief = build_group_brief_from_evidence(
+        chat_id="oc_group",
+        messages=[{"message_id": "om_1", "sender": "老师", "content": "PPT 不超过 8 页。"}],
+        evidence_items=[
+            {
+                "kind": "open_question",
+                "claim": "需要确认页数。",
+                "source_message_ids": ["om_1"],
+                "confidence": "medium",
+            }
+        ],
+    )
+
+    card = build_confirmation_card(brief, task_id="im-om_new", session_key="feishu:oc_group:session:om_new")
+
+    assert {
+        "tag": "button",
+        "text": {"tag": "plain_text", "content": "开始执行"},
+        "type": "primary",
+        "value": {
+            "action": "start_task",
+            "task_id": "im-om_new",
+            "session_key": "feishu:oc_group:session:om_new",
+        },
+    } in card["elements"]
+
+
 def test_build_group_brief_from_evidence_uses_external_extractor_without_rule_merging() -> None:
     brief = build_group_brief_from_evidence(
         chat_id="oc_group",

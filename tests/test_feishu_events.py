@@ -36,6 +36,7 @@ def test_parse_compact_event_from_lark_cli_subscribe() -> None:
         "id": "om_123",
         "message_id": "om_123",
         "chat_id": "oc_456",
+        "chat_name": "项目群",
         "chat_type": "p2p",
         "message_type": "text",
         "content": "Hello from compact event",
@@ -48,6 +49,7 @@ def test_parse_compact_event_from_lark_cli_subscribe() -> None:
     assert parsed.message_id == "om_123"
     assert parsed.text == "Hello from compact event"
     assert parsed.sender_open_id == "ou_789"
+    assert parsed.chat_name == "项目群"
 
 
 def test_create_task_from_event_writes_request_markdown(tmp_path: Path) -> None:

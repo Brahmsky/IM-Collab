@@ -17,23 +17,23 @@ def build_codex_task_prompt(task_dir: Path) -> str:
     brief_instruction = _brief_instruction(task_dir)
     control_instruction = _control_instruction(task_dir)
     artifact_instruction = _artifact_instruction(task_dir)
-    return f"""You are generating local office artifacts for an IM-Collab task.
+    return f"""你正在为 IM-Collab 任务生成本地办公产物。
 
-Read `{task_path}`.
+请先阅读 `{task_path}`。
 {brief_instruction}
 {control_instruction}
 {artifact_instruction}
 
-Use Codex + superpowers as the planning and generation method. Do not call Feishu, lark-cli, Presenton, network APIs, or external office tools in this step. Python delivery code will publish the artifacts later.
+请使用 Codex 和 superpowers 进行规划和生成。这一步不要调用飞书、`lark-cli`、Presenton、网络 API 或其他外部办公工具；后续会由 Python 交付代码负责发布产物。
 
-Do not modify repository source files. Only write inside `{_display_path(task_dir)}`.
+不要修改仓库里的源代码文件。你只能在 `{_display_path(task_dir)}` 目录内写入文件。
 
-Required outputs:
-- `plan.json`: object with `task_id` and `steps`; each step has `id`, `title`, and `status`.
-- Local artifact files that fit the user's request. Do not force every task into document/slides/whiteboard if the user asked for something else.
-- `artifacts.json`: contains `task_id`, `items`, `summary`, and `next_steps`.
+你必须产出：
+- `plan.json`：一个包含 `task_id` 和 `steps` 的对象；每个 step 必须带有 `id`、`title` 和 `status`。
+- 符合用户请求的本地工件文件。不要因为实现方便，就强行把所有任务都产出成 `document/slides/whiteboard`；如果用户要的是别的内容，就按真实需求产出。
+- `artifacts.json`：必须包含 `task_id`、`items`、`summary` 和 `next_steps`。
 
-Each entry in `items` describes one produced artifact:
+`items` 里的每一项都描述一个你生成出来的工件，例如：
 
 ```json
 {{
@@ -47,7 +47,7 @@ Each entry in `items` describes one produced artifact:
 }}
 ```
 
-Use relative or absolute paths in `artifacts.json` that point to the files you created. Preserve the user's requested artifact shape instead of mapping it into fixed fields. Mark the task as complete by writing valid `artifacts.json`; do not publish to Feishu yourself.
+`artifacts.json` 里的路径可以是相对路径，也可以是绝对路径，但都必须真实指向你刚生成的文件。请保留用户实际需要的工件结构，不要为了适配固定字段而改写需求。任务完成的标志是写出合法的 `artifacts.json`；不要在这一步自行发布到飞书。
 """
 
 
@@ -58,15 +58,15 @@ def _artifact_instruction(task_dir: Path) -> str:
     preview = artifacts_path.read_text(encoding="utf-8").strip()
     return f"""
 
-This task already has delivery metadata in `{_display_path(artifacts_path)}`. If the user asks for modifications, ground the new work in these existing artifacts and update existing Feishu artifacts where possible instead of creating unrelated duplicates.
+这个任务已经在 `{_display_path(artifacts_path)}` 里有一份交付元数据。如果用户是在继续修改上一轮结果，你要优先基于这些现有工件继续修改，并尽量更新已有的飞书工件，而不是无关地再造一份重复交付。
 
-Current artifacts:
+当前工件如下：
 
 ```json
 {preview}
 ```
 
-Update existing Feishu artifacts when the user asks for modifications; do not create unrelated duplicate deliverables unless necessary.
+当用户要求修改时，优先更新已有飞书工件；除非确实必要，否则不要创建无关的重复交付物。
 """
 
 
@@ -77,11 +77,11 @@ def _brief_instruction(task_dir: Path) -> str:
         return ""
     return f"""
 
-This task includes a source-grounded group brief:
+这个任务附带了一份有来源依据的群聊 brief：
 - `{_display_path(brief_json)}`
 - `{_display_path(brief_md)}`
 
-Use `brief.json` as the primary evidence layer for group-chat requirements. Do not add requirements that are not present in the brief or `request.md`. If the brief marks conflicts or open questions, preserve them in generated artifacts and `next_steps` instead of silently resolving them.
+请把 `brief.json` 当作群聊需求的主证据层。不要添加 `brief` 或 `request.md` 里没有出现过的要求。如果 brief 标出了冲突或待确认项，请在生成的工件和 `next_steps` 里保留这些信息，不要擅自替用户消解。
 """
 
 
@@ -92,9 +92,9 @@ def _control_instruction(task_dir: Path) -> str:
     preview = control_log.read_text(encoding="utf-8").strip()
     return f"""
 
-This task includes latest operator and group-chat instructions in `{_display_path(control_log)}`. Read them before generating artifacts. These instructions may confirm a previously waiting group brief or add requirements.
+这个任务在 `{_display_path(control_log)}` 里记录了最新的操作员补充和群聊指令。生成工件前先读它们。这些指令可能是在确认之前待处理的 brief，也可能是在补充新需求。
 
-Current control log:
+当前控制日志：
 
 ```jsonl
 {preview}
