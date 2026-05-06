@@ -29,7 +29,7 @@ def run_golembot_office_task(
     tasks_root: Path,
     chat_name: str = "",
     task_id: str | None = None,
-    generator: str = "local",
+    generator: str = "app-server",
     publish: bool = False,
     runner: Any | None = None,
     conversation_context: list[dict[str, Any]] | None = None,

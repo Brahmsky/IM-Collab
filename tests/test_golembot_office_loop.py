@@ -187,7 +187,6 @@ def test_run_golembot_office_task_waits_for_user_when_external_brief_has_conflic
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="waiting-brief-task",
-        generator="local",
         publish=False,
         conversation_context=[
             {"message_id": "om_1", "sender_id": "teacher", "content": "PPT 不超过 8 页。"},
@@ -324,7 +323,6 @@ def test_run_golembot_office_task_reuses_existing_app_server_thread(tmp_path: Pa
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="gb-initial-task",
-        generator="app-server",
         publish=False,
         codex_backend=FakeAppServerBackend(),
     )
@@ -336,7 +334,6 @@ def test_run_golembot_office_task_reuses_existing_app_server_thread(tmp_path: Pa
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="gb-followup-task",
-        generator="app-server",
         publish=False,
         codex_backend=FakeAppServerBackend(),
     )

@@ -505,6 +505,7 @@ def test_dispatch_new_group_session_falls_back_to_empty_context_when_live_contex
                 "type": "im.message.receive_v1",
                 "message_id": "om_new",
                 "chat_id": "oc_group",
+                "chat_name": "IM-Collab 群聊测试",
                 "chat_type": "group",
                 "message_type": "text",
                 "content": "@飞书 CLI /new 5h 生成项目复盘",

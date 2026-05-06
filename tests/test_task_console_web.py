@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from bridge.cockpit_console_html import _relative_time_display, render_assistant_typing_fragment, render_task_chat_fragment
-from bridge.task_console_web import handle_console_action, render_console_html
+from bridge.task_console_web import handle_console_action, handle_console_action_result, render_console_html
 from bridge.task_index import build_task_index
 
 
@@ -218,6 +218,54 @@ def test_render_console_html_has_collapsible_session_groups_and_session_menu(tmp
     assert "delete" in html
     assert "保存</button>" not in html
     assert "取消</label>" not in html
+
+
+def test_render_console_html_defaults_session_title_to_first_user_message_and_group_name(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "task-1" / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "task-1" / "artifacts.json",
+        {
+            "task_id": "task-1",
+            "summary": "已完成。",
+            "next_steps": [],
+            "items": [{"id": "document", "kind": "document", "path": "tasks/task-1/document.md", "title": "材料"}],
+        },
+    )
+    (tasks_root / "task-1" / "request.md").write_text(
+        "session_key: feishu:oc_group\n"
+        "chat_id: oc_group\n"
+        "sender_id: ou_user\n\n"
+        "## User Message\n"
+        "@飞书 CLI /new 5h 帮忙生成这个ppt，然后返回到这里\n",
+        encoding="utf-8",
+    )
+    write_json(
+        tasks_root / "task-bindings.json",
+        {
+            "feishu:oc_group:session:om_new": {
+                "session_key": "feishu:oc_group:session:om_new",
+                "chat_id": "oc_group",
+                "chat_name": "飞书CLI bot测试",
+                "last_task_id": "task-1",
+            }
+        },
+    )
+
+    html = render_console_html(tasks_root, tmp_path / "events")
+
+    assert "飞书CLI bot测试" in html
+    assert "@飞书 CLI /new 5h 帮忙生成这个ppt，然后返回到这里" in html
+    assert ">task-1<" not in html
     assert "onblur=\"this.form.requestSubmit()\"" in html
     assert "bg-primary rounded-l-full" not in html
 
@@ -489,7 +537,8 @@ def test_chat_transcript_backfills_initial_user_request_when_legacy_chat_log_has
     assert "最初的问题" in html
     assert "ok" in html
     assert html.index("最初的问题") < html.index("ok")
-    assert html.index("第一轮问题") < html.index("第一轮回复") < html.index("第二轮问题") < html.index("第二轮回复")
+    assert html.count('data-role="chat-message-user"') == 1
+    assert html.count('data-role="chat-message-assistant"') == 1
     assert "这是任务摘要，不应该直接冒充聊天消息。" not in html
     assert "读取 IM / 群聊上下文" not in html
     assert "生成群聊 brief" not in html
@@ -788,6 +837,98 @@ def test_handle_console_action_retries_task(tmp_path: Path) -> None:
 
     assert message == ""
     assert seen == {"task_dir": task_dir, "generator": "local", "publish": True}
+
+
+def test_handle_console_action_result_uses_active_turn_for_running_append(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "running",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:02:00+00:00",
+            "error": None,
+        },
+    )
+    seen: list[tuple[Path, bool]] = []
+
+    def fake_app_server_retry(task_dir_arg: Path, publish: bool = False) -> dict[str, object]:
+        seen.append((task_dir_arg, publish))
+        return {"task_id": task_dir_arg.name}
+
+    result = handle_console_action_result(
+        tasks_root,
+        {"action": "append", "task_id": "task-1", "text": "继续补充"},
+        app_server_retry=fake_app_server_retry,
+        run_followup_in_background=False,
+    )
+
+    assert result.flash == ""
+    assert result.backend == "active_turn"
+    assert seen == []
+
+
+def test_handle_console_action_result_uses_app_server_retry_for_completed_append(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    write_json(
+        task_dir / "status.json",
+        {
+            "task_id": "task-1",
+            "state": "completed",
+            "created_at": "2026-04-28T01:00:00+00:00",
+            "updated_at": "2026-04-28T01:02:00+00:00",
+            "error": None,
+        },
+    )
+    (task_dir / "request.md").write_text(
+        "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n第一轮问题\n",
+        encoding="utf-8",
+    )
+    seen: list[tuple[Path, bool]] = []
+
+    def fake_app_server_retry(task_dir_arg: Path, publish: bool = False) -> dict[str, object]:
+        seen.append((task_dir_arg, publish))
+        return {"task_id": task_dir_arg.name}
+
+    result = handle_console_action_result(
+        tasks_root,
+        {"action": "append", "task_id": "task-1", "text": "继续补充"},
+        app_server_retry=fake_app_server_retry,
+        run_followup_in_background=False,
+    )
+
+    messages = [
+        json.loads(line)
+        for line in (task_dir / "chat_messages.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert result.flash == ""
+    assert result.backend == "codex_app_server"
+    assert seen == [(task_dir, False)]
+    assert [message["text"] for message in messages] == ["第一轮问题", "继续补充"]
+
+
+def test_handle_console_action_result_uses_app_server_retry_for_retry_action(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    task_dir = tasks_root / "task-1"
+    task_dir.mkdir(parents=True)
+    seen: list[tuple[Path, bool]] = []
+
+    def fake_app_server_retry(task_dir_arg: Path, publish: bool = False) -> dict[str, object]:
+        seen.append((task_dir_arg, publish))
+        return {"task_id": task_dir_arg.name}
+
+    result = handle_console_action_result(
+        tasks_root,
+        {"action": "retry", "task_id": "task-1", "generator": "app-server", "publish": "1"},
+        app_server_retry=fake_app_server_retry,
+    )
+
+    assert result.flash == ""
+    assert result.backend == "codex_app_server"
+    assert seen == [(task_dir, True)]
 
 
 def test_handle_console_action_renames_and_archives_session(tmp_path: Path) -> None:

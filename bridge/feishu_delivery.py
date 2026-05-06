@@ -8,7 +8,7 @@ from bridge.artifacts import artifact_items, resolve_local_path, upsert_item
 from bridge.lark_docs import create_doc_from_markdown
 from bridge.lark_im import build_delivery_card, reply_card_to_message
 from bridge.lark_slides import create_slides_from_markdown
-from bridge.lark_whiteboard import append_whiteboard_to_doc, update_whiteboard_from_mermaid
+from bridge.lark_whiteboard import ensure_whiteboard_target, update_whiteboard_from_mermaid
 from bridge.task_protocol import read_artifacts, write_artifacts
 
 Runner = Callable[[list[str], str | None], str]
@@ -46,8 +46,15 @@ def publish_task_artifacts_to_feishu(
     published: dict[str, dict[str, Any]] = {}
 
     document_item = _first_item(items, "document")
+    document_remote = _feishu_remote(document_item)
     document_path = _local_artifact_path(task_dir, document_item)
-    if document_item is not None and document_path is not None:
+    if document_item is not None and document_remote is not None:
+        published["document"] = upsert_item(
+            artifacts,
+            str(document_item.get("id") or document_item.get("kind") or "document"),
+            {**document_item, "remote": document_remote},
+        )
+    elif document_item is not None and document_path is not None:
         doc_result = create_doc_from_markdown(
             document_path,
             title=_artifact_title(artifacts, document_item, "方案"),
@@ -69,8 +76,15 @@ def publish_task_artifacts_to_feishu(
         )
 
     slides_item = _first_item(items, "slides", "presentation")
+    slides_remote = _feishu_remote(slides_item)
     slides_path = _local_artifact_path(task_dir, slides_item)
-    if slides_item is not None and slides_path is not None:
+    if slides_item is not None and slides_remote is not None:
+        published["slides"] = upsert_item(
+            artifacts,
+            str(slides_item.get("id") or slides_item.get("kind") or "slides"),
+            {**slides_item, "remote": slides_remote},
+        )
+    elif slides_item is not None and slides_path is not None:
         slides_result = create_slides_from_markdown(
             slides_path,
             title=_artifact_title(artifacts, slides_item, "Deck"),
@@ -93,15 +107,18 @@ def publish_task_artifacts_to_feishu(
 
     whiteboard_item = _first_item(items, "whiteboard", "diagram", "mermaid")
     whiteboard_path = _local_artifact_path(task_dir, whiteboard_item)
-    if (
-        whiteboard_item is not None
-        and whiteboard_path is not None
-        and published.get("document", {}).get("remote", {}).get("document_id")
-    ):
-        document_id = str(published["document"]["remote"]["document_id"])
-        whiteboard_block = append_whiteboard_to_doc(document_id, runner=runner)
+    whiteboard_remote = _feishu_remote(whiteboard_item)
+    whiteboard_target = _whiteboard_target_item(whiteboard_item, whiteboard_remote, published.get("document"))
+    if whiteboard_item is not None and whiteboard_remote is not None and whiteboard_path is None:
+        published["whiteboard"] = upsert_item(
+            artifacts,
+            str(whiteboard_item.get("id") or whiteboard_item.get("kind") or "whiteboard"),
+            {**whiteboard_item, "remote": whiteboard_remote},
+        )
+    elif whiteboard_item is not None and whiteboard_path is not None and whiteboard_target is not None:
+        target = ensure_whiteboard_target(whiteboard_target, runner=runner)
         whiteboard_update = update_whiteboard_from_mermaid(
-            whiteboard_block["whiteboard_token"],
+            str(target["whiteboard_token"]),
             whiteboard_path,
             idempotency_token=f"{artifacts['task_id']}-board",
             runner=runner,
@@ -113,9 +130,9 @@ def publish_task_artifacts_to_feishu(
                 **whiteboard_item,
                 "remote": {
                     "provider": "feishu",
-                    "document_id": document_id,
-                    "whiteboard_token": whiteboard_block["whiteboard_token"],
-                    "block_id": whiteboard_block["block_id"],
+                    "document_id": target.get("document_id"),
+                    "block_id": target.get("block_id"),
+                    "whiteboard_token": target["whiteboard_token"],
                     "created_node_id": whiteboard_update["created_node_id"],
                 },
             },
@@ -124,7 +141,7 @@ def publish_task_artifacts_to_feishu(
     if not published:
         raise ValueError("no publishable artifact items found")
 
-    artifacts["summary"] = f"{artifacts['summary']} Published to Feishu via lark-cli."
+    artifacts["summary"] = _append_publish_summary(str(artifacts["summary"]))
     write_artifacts(task_dir, artifacts)
     (task_dir / "delivery_card.json").write_text(
         json.dumps(build_delivery_card(artifacts), ensure_ascii=False, indent=2) + "\n",
@@ -161,3 +178,36 @@ def _adapt_runner(runner: Runner | None):
         return runner(args, None)
 
     return run_without_input
+
+
+def _feishu_remote(item: dict[str, Any] | None) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    remote = item.get("remote")
+    if isinstance(remote, dict) and remote.get("provider") == "feishu":
+        return remote
+    return None
+
+
+def _whiteboard_target_item(
+    whiteboard_item: dict[str, Any] | None,
+    whiteboard_remote: dict[str, Any] | None,
+    document_item: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if whiteboard_item is None:
+        return None
+    if whiteboard_remote is not None:
+        return {"remote": whiteboard_remote}
+    document_remote = _feishu_remote(document_item)
+    if document_remote is not None:
+        return {"remote": document_remote}
+    return None
+
+
+def _append_publish_summary(summary: str) -> str:
+    suffix = "Published to Feishu via lark-cli."
+    if suffix in summary:
+        return summary
+    if not summary:
+        return suffix
+    return f"{summary} {suffix}"

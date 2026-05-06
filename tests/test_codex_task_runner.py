@@ -51,9 +51,12 @@ def test_build_codex_task_prompt_is_file_protocol_only(tmp_path: Path) -> None:
     assert "request.md" in prompt
     assert "plan.json" in prompt
     assert "items" in prompt
+    assert "你可以根据任务需要调用当前环境里可用的工具" in prompt
+    assert "`lark-cli`" in prompt
+    assert "Presenton" in prompt
+    assert "最终都要把本任务的可追踪结果落到" in prompt
     assert "不要因为实现方便，就强行把所有任务都产出成 `document/slides/whiteboard`" in prompt
-    assert "这一步不要调用飞书" in prompt
-    assert "不要修改仓库里的源代码文件" in prompt
+    assert "不要修改仓库里的业务源代码文件" in prompt
 
 
 def test_build_codex_task_prompt_prefers_group_brief_when_present(tmp_path: Path) -> None:
@@ -101,6 +104,7 @@ def test_build_codex_task_prompt_includes_existing_artifacts_for_followup(tmp_pa
     assert "artifacts.json" in prompt
     assert "https://feishu/slides" in prompt
     assert "优先基于这些现有工件继续修改" in prompt
+    assert "优先更新已有工件链路" in prompt
 
 
 def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Path) -> None:
@@ -116,7 +120,7 @@ def test_build_codex_task_args_uses_codex_exec_with_workspace_write(tmp_path: Pa
     assert "--ask-for-approval" not in args
     assert "--add-dir" in args
     assert task_dir.as_posix() in args
-    assert args[-1].startswith("你正在为 IM-Collab 任务生成本地办公产物。")
+    assert args[-1].startswith("你正在执行一个 IM-Collab 办公任务。")
 
 
 def test_run_codex_task_validates_outputs_and_marks_completed(tmp_path: Path) -> None:

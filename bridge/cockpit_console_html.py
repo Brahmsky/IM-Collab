@@ -10,7 +10,6 @@ from html import escape
 from pathlib import Path
 from urllib.parse import quote
 
-from bridge.artifacts import artifact_items, remote_label
 from bridge.chat_messages import read_chat_messages
 from bridge.task_index import EventSummary, TaskSummary
 
@@ -154,6 +153,12 @@ def _cockpit_header_title(t: TaskSummary) -> str:
     session_title = (t.session_title or "").strip()
     if session_title:
         return session_title[:48] + ("…" if len(session_title) > 48 else "")
+    request = _task_request_message(t)
+    if request:
+        line = request.split("\n", 1)[0].strip()
+        if len(line) > 48:
+            return line[:47] + "…"
+        return line
     raw = (t.summary or "").strip()
     if raw:
         line = raw.split("\n", 1)[0].strip()
@@ -228,9 +233,10 @@ def _session_display_title(t: TaskSummary) -> str:
     title = (t.session_title or "").strip()
     if title:
         return title
-    chat_name = (t.chat_name or "").strip()
-    if chat_name:
-        return chat_name
+    request = _task_request_message(t)
+    if request:
+        line = request.split("\n", 1)[0].strip()
+        return line[:22] + ("…" if len(line) > 22 else "")
     raw = (t.summary or "").strip().split("\n", 1)[0].strip()
     if raw:
         return raw[:22] + ("…" if len(raw) > 22 else "")
@@ -504,14 +510,14 @@ def _chat_log_messages(t: TaskSummary) -> list[tuple[datetime, str, str]]:
     stored = read_chat_messages(t.path)
     if stored:
         out: list[tuple[datetime, str, str]] = []
+        has_user = any(str(message.get("role")) == "user" for message in stored)
+        request = _task_request_message(t)
+        if request and not has_user:
+            created = _parse_iso_datetime(t.created_at) or datetime.min.replace(tzinfo=UTC)
+            out.append((created, "user", request))
         for message in stored:
             timestamp = _parse_iso_datetime(str(message.get("timestamp") or "")) or datetime.max.replace(tzinfo=UTC)
             out.append((timestamp, str(message["role"]), str(message["text"])))
-        request = _task_request_message(t)
-        if request and not any(role == "user" for _timestamp, role, _text in out):
-            created = _parse_iso_datetime(t.created_at) or datetime.min.replace(tzinfo=UTC)
-            out.append((created, "user", request))
-            out.sort(key=lambda item: (item[0], 0 if item[1] == "user" else 1))
         return out
 
     out = []
@@ -654,6 +660,10 @@ def _append_form(task_id: str) -> str:
 <input type="hidden" name="action" value="append">
 <input type="hidden" name="task_id" value="{tid}">
 <input type="hidden" name="redirect_task" value="{tid}">
+<label class="p-2 text-text-secondary shrink-0 cursor-not-allowed opacity-70" title="附件请通过飞书会话发送">
+<input type="file" class="hidden" disabled tabindex="-1"/>
+<span class="material-symbols-outlined text-[20px]">attach_file</span>
+</label>
 <textarea name="text" required rows="1" data-submit-on-enter="true" placeholder="添加指令..." class="w-full bg-transparent border-none resize-none focus:ring-0 text-[14px] py-2 px-2 max-h-32 placeholder-text-secondary text-text-primary outline-none"></textarea>
 <button type="submit" class="w-9 h-9 rounded-lg bg-primary text-white hover:bg-primary-hover flex items-center justify-center transition-colors shrink-0 mb-0.5 mr-0.5" title="发送">
 <span class="material-symbols-outlined text-[18px]">send</span>
@@ -763,41 +773,6 @@ def _session_artifact_outputs(tasks: list[TaskSummary], selected: TaskSummary) -
     return outputs
 
 
-def _is_relevant_inspector_artifact_kind(kind: str) -> bool:
-    normalized = kind.strip().lower()
-    return normalized in {"document", "doc", "slides", "slide", "presentation", "ppt", "whiteboard", "board", "diagram", "mermaid"}
-
-
-def _session_relevant_artifact_outputs(tasks: list[TaskSummary], selected: TaskSummary) -> list[tuple[str, str]]:
-    selected_group = _task_group_label(selected)
-    outputs: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for task in tasks:
-        if _task_group_label(task) != selected_group:
-            continue
-        artifacts_path = task.path / "artifacts.json"
-        if not artifacts_path.is_file():
-            continue
-        try:
-            artifacts = json.loads(artifacts_path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(artifacts, dict):
-            continue
-        for item in artifact_items(artifacts):
-            kind = str(item.get("kind") or item.get("id") or "")
-            if not _is_relevant_inspector_artifact_kind(kind):
-                continue
-            label = str(item.get("title") or item.get("kind") or item.get("id") or "artifact")
-            value = remote_label(item)
-            key = (label, value)
-            if key in seen:
-                continue
-            seen.add(key)
-            outputs.append(key)
-    return outputs
-
-
 def _right_inspector_drawer(t: TaskSummary, artifact_list: str) -> str:
     primary_rows = _build_inspector_primary_rows_html(t)
     return f"""<div class="h-14 border-b border-border flex flex-col justify-center px-5 shrink-0">
@@ -847,40 +822,6 @@ def _shell_head(title: str) -> str:
 details > summary::-webkit-details-marker {{ display: none; }}
 .session-rename-toggle:checked ~ .session-link {{ display: none; }}
 .session-rename-toggle:checked ~ .session-rename-inline {{ display: flex; }}
-@media (max-width: 1279px) {{
-    body.cockpit-layout {{
-        height: auto;
-        overflow-y: auto;
-    }}
-    body.cockpit-layout > nav,
-    body.cockpit-layout > main,
-    body.cockpit-layout > aside {{
-        position: static !important;
-        left: auto !important;
-        right: auto !important;
-        top: auto !important;
-        width: 100% !important;
-        height: auto !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-    }}
-    body.cockpit-layout > nav {{
-        border-right: none;
-        border-bottom: 1px solid #DEE0E3;
-    }}
-    body.cockpit-layout > aside {{
-        border-left: none;
-        border-top: 1px solid #DEE0E3;
-        box-shadow: none;
-    }}
-    body.cockpit-layout > main {{
-        min-height: 0;
-    }}
-    body.cockpit-layout .cockpit-input-shell {{
-        position: static;
-        padding-top: 16px;
-    }}
-}}
 </style>
 <script id="tailwind-config">
 tailwind.config = {{
@@ -1189,7 +1130,7 @@ def render_cockpit_document(
         chat_transcript = _chat_transcript_html(t)
 
         artifact_list = ""
-        for lbl, val in _session_relevant_artifact_outputs(tasks, t):
+        for lbl, val in _session_artifact_outputs(tasks, t):
             icon, kind = _artifact_kind(lbl)
             if val and val.startswith("http"):
                 artifact_list += f"""<a href="{escape(val, quote=True)}" target="_blank" rel="noopener" class="flex items-start gap-3 p-2.5 rounded-lg hover:bg-surface-hover transition-colors cursor-pointer border border-transparent no-underline text-inherit">
@@ -1215,7 +1156,7 @@ def render_cockpit_document(
 <div class="flex-1 overflow-y-auto p-6 space-y-6 pb-32" data-chat-scroll-container="true">
 {chat_transcript}
 </div>
-<div class="cockpit-input-shell static lg:absolute bottom-0 left-0 right-0 bg-background pt-4 pb-6 px-6 z-20">
+<div class="absolute bottom-0 left-0 right-0 bg-background pt-4 pb-6 px-6 z-20">
 {_append_form(t.task_id)}
 </div>"""
 
@@ -1230,9 +1171,9 @@ def render_cockpit_document(
 </form>"""
 
     return f"""{_shell_head(title)}
-<body class="cockpit-layout bg-background text-text-primary h-auto lg:h-screen w-full flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden font-sans text-[14px]">
+<body class="bg-background text-text-primary h-screen w-full flex overflow-hidden font-sans text-[14px]">
 <span class="sr-only">Agent-Pilot 办公助手 · IM 事件 {events.total} · 任务 {len(tasks)}</span>
-<nav class="bg-[#F5F6F7] w-full lg:w-64 h-auto lg:h-screen border-b lg:border-b-0 lg:border-r border-border lg:fixed lg:left-0 lg:top-0 flex flex-col py-4 z-20">
+<nav class="bg-[#F5F6F7] h-screen w-64 border-r fixed left-0 top-0 border-border flex flex-col py-4 z-20">
 <div class="px-5 mb-5">
 <div class="flex items-center gap-3 mb-5">
 <div class="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-white shrink-0 shadow-sm">
@@ -1253,10 +1194,10 @@ def render_cockpit_document(
 </div>
 <div class="px-3 pt-3 border-t border-border space-y-0.5 mt-auto"></div>
 </nav>
-<main class="flex-1 min-w-0 lg:ml-[256px] lg:mr-[320px] flex flex-col h-auto lg:h-screen bg-background relative z-0">
+<main class="flex-1 ml-[256px] mr-[320px] flex flex-col h-screen bg-background relative z-0">
 {main_column}
 </main>
-<aside class="bg-white w-full lg:w-80 h-auto lg:h-screen border-t lg:border-t-0 lg:border-l border-border lg:fixed lg:right-0 lg:top-0 flex flex-col z-20 shadow-sm">
+<aside class="bg-white h-screen w-80 border-l border-border fixed right-0 top-0 flex flex-col z-20 shadow-sm">
 {inspector_column}
 </aside>
 <dialog id="im-collab-new-task" style="max-width:420px;border:1px solid #DEE0E3;border-radius:12px;padding:0;">

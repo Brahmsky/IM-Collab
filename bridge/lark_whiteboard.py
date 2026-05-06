@@ -100,6 +100,63 @@ def update_whiteboard_from_mermaid(
     }
 
 
+def ensure_whiteboard_target(
+    item: dict[str, Any],
+    *,
+    dry_run: bool = False,
+    runner: Runner | None = None,
+) -> dict[str, Any]:
+    remote = _feishu_remote(item)
+    if remote.get("whiteboard_token"):
+        return {
+            "document_id": _string_or_none(remote.get("document_id")),
+            "whiteboard_token": str(remote["whiteboard_token"]),
+            "block_id": _string_or_none(remote.get("block_id")),
+        }
+
+    document_ref = _string_or_none(remote.get("document_id")) or _string_or_none(remote.get("url"))
+    if not document_ref:
+        raise ValueError("whiteboard continuation requires a Feishu whiteboard or document remote")
+
+    appended = append_whiteboard_to_doc(document_ref, dry_run=dry_run, runner=runner)
+    return {
+        "document_id": _string_or_none(remote.get("document_id")) or document_ref,
+        "whiteboard_token": _string_or_none(appended.get("whiteboard_token")),
+        "block_id": _string_or_none(appended.get("block_id")),
+    }
+
+
+def create_or_update_whiteboard_from_mermaid(
+    mermaid_path: Path,
+    *,
+    idempotency_token: str,
+    document_id_or_url: str | None = None,
+    whiteboard_token: str | None = None,
+    dry_run: bool = False,
+    runner: Runner | None = None,
+) -> dict[str, Any]:
+    target: dict[str, Any]
+    if whiteboard_token:
+        target = {"document_id": document_id_or_url, "whiteboard_token": whiteboard_token, "block_id": None}
+    elif document_id_or_url:
+        target = ensure_whiteboard_target(
+            {"remote": {"provider": "feishu", "document_id": document_id_or_url, "url": document_id_or_url}},
+            dry_run=dry_run,
+            runner=runner,
+        )
+    else:
+        raise ValueError("either document_id_or_url or whiteboard_token is required")
+
+    update = update_whiteboard_from_mermaid(
+        str(target["whiteboard_token"]),
+        mermaid_path,
+        idempotency_token=idempotency_token,
+        dry_run=dry_run,
+        runner=runner,
+    )
+    return {**target, "created_node_id": update.get("created_node_id"), "response": update.get("response"), "raw": update.get("raw")}
+
+
 def _run(args: list[str], input_text: str | None, runner: Runner | None) -> str:
     if runner:
         return runner(args, input_text)
@@ -113,3 +170,16 @@ def _first_whiteboard_block(response: dict[str, Any]) -> dict[str, Any]:
         if block.get("block_type") == "whiteboard":
             return block
     raise ValueError("lark-cli response did not contain a new whiteboard block")
+
+
+def _feishu_remote(item: dict[str, Any]) -> dict[str, Any]:
+    remote = item.get("remote")
+    if not isinstance(remote, dict) or remote.get("provider") != "feishu":
+        raise ValueError("whiteboard continuation requires remote.provider=feishu")
+    return remote
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None or value == "":
+        return None
+    return str(value)

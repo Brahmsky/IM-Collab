@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import shutil
+import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, StdioAppServerTransport
 from bridge.cockpit_console_html import render_cockpit_document
 from bridge.chat_messages import append_chat_message, seed_chat_messages_from_task
 from bridge.task_control import append_control_command
@@ -13,6 +16,73 @@ from bridge.task_ops import ack_task, retry_golembot_task
 from bridge.task_protocol import read_artifacts, read_status
 
 RetryFunc = Callable[..., dict[str, Any]]
+AppServerRetryFunc = Callable[[Path, bool], dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ConsoleActionResult:
+    flash: str = ""
+    backend: str = ""
+
+
+class _SharedCodexAppServerRetry:
+    def __init__(
+        self,
+        project_root: Path,
+        *,
+        retry: RetryFunc,
+        transport_cls: type[StdioAppServerTransport],
+        client_cls: type[AppServerClient],
+        backend_cls: type[CodexAppServerBackend],
+    ) -> None:
+        self.project_root = project_root
+        self._retry = retry
+        self._transport_cls = transport_cls
+        self._client_cls = client_cls
+        self._backend_cls = backend_cls
+        self._lock = threading.Lock()
+        self._transport: StdioAppServerTransport | None = None
+        self._backend: CodexAppServerBackend | None = None
+
+    def __call__(self, task_dir: Path, publish: bool = False) -> dict[str, Any]:
+        with self._lock:
+            return self._retry(
+                task_dir,
+                generator="app-server",
+                publish=publish,
+                codex_backend=self._get_backend(),
+            )
+
+    def _get_backend(self) -> CodexAppServerBackend:
+        if self._backend is None:
+            self._transport = self._transport_cls(cwd=self.project_root)
+            client = self._client_cls(self._transport)
+            client.initialize()
+            self._backend = self._backend_cls(client, project_root=self.project_root)
+        return self._backend
+
+    def close(self) -> None:
+        if self._transport is not None:
+            self._transport.close()
+            self._transport = None
+            self._backend = None
+
+
+def make_codex_app_server_retry(
+    project_root: Path,
+    *,
+    retry: RetryFunc = retry_golembot_task,
+    transport_cls: type[StdioAppServerTransport] = StdioAppServerTransport,
+    client_cls: type[AppServerClient] = AppServerClient,
+    backend_cls: type[CodexAppServerBackend] = CodexAppServerBackend,
+) -> AppServerRetryFunc:
+    return _SharedCodexAppServerRetry(
+        project_root,
+        retry=retry,
+        transport_cls=transport_cls,
+        client_cls=client_cls,
+        backend_cls=backend_cls,
+    )
 
 
 def render_console_html(
@@ -38,7 +108,25 @@ def handle_console_action(
     tasks_root: Path,
     form: dict[str, str],
     retry: RetryFunc = retry_golembot_task,
+    app_server_retry: AppServerRetryFunc | None = None,
+    run_followup_in_background: bool = True,
 ) -> str:
+    return handle_console_action_result(
+        tasks_root,
+        form,
+        retry=retry,
+        app_server_retry=app_server_retry,
+        run_followup_in_background=run_followup_in_background,
+    ).flash
+
+
+def handle_console_action_result(
+    tasks_root: Path,
+    form: dict[str, str],
+    retry: RetryFunc = retry_golembot_task,
+    app_server_retry: AppServerRetryFunc | None = None,
+    run_followup_in_background: bool = True,
+) -> ConsoleActionResult:
     action = form.get("action", "")
     task_id = _required(form, "task_id")
     task_dir = tasks_root / task_id
@@ -60,34 +148,51 @@ def handle_console_action(
             },
             operator="operator",
         )
-        return ""
+        return ConsoleActionResult(backend=_append_followup_backend(task_dir, app_server_retry, run_followup_in_background))
 
     if action == "interrupt":
         append_control_command(task_dir, "interrupt", {}, operator="operator")
-        return ""
+        return ConsoleActionResult()
 
     if action == "ack":
         ack_task(task_dir, operator="operator", note=form.get("note", ""))
-        return ""
+        return ConsoleActionResult()
 
     if action == "retry":
-        retry(
-            task_dir,
-            generator=form.get("generator") or "local",
-            publish=form.get("publish") in {"1", "true", "on"},
-        )
-        return ""
+        generator = form.get("generator") or "local"
+        publish = form.get("publish") in {"1", "true", "on"}
+        if generator == "app-server" and app_server_retry is not None:
+            app_server_retry(task_dir, publish)
+            return ConsoleActionResult(backend="codex_app_server")
+        retry(task_dir, generator=generator, publish=publish)
+        return ConsoleActionResult(backend=generator)
 
     if action == "rename_session":
         title = _required(form, "session_title")
         _rename_session(tasks_root / "task-bindings.json", form.get("session_key", ""), task_id, title)
-        return ""
+        return ConsoleActionResult()
 
     if action == "delete_session":
         _delete_session(tasks_root, task_id, form.get("session_key", ""))
-        return ""
+        return ConsoleActionResult()
 
     raise ValueError(f"unsupported action: {action}")
+
+
+def _append_followup_backend(
+    task_dir: Path,
+    app_server_retry: AppServerRetryFunc | None,
+    run_followup_in_background: bool,
+) -> str:
+    if str(_safe_status(task_dir).get("state") or "") == "running":
+        return "active_turn"
+    if app_server_retry is None:
+        return ""
+    if run_followup_in_background:
+        threading.Thread(target=app_server_retry, args=(task_dir, False), daemon=True).start()
+    else:
+        app_server_retry(task_dir, False)
+    return "codex_app_server"
 
 
 def _safe_status(task_dir: Path) -> dict[str, Any]:

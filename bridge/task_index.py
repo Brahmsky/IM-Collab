@@ -92,6 +92,9 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
 def _artifact_outputs(artifacts: dict[str, Any]) -> list[tuple[str, str]]:
     outputs = []
     for item in artifact_items(artifacts):
+        kind = str(item.get("kind") or item.get("id") or "").lower()
+        if kind in {"plan", "message", "reply"}:
+            continue
         label = str(item.get("title") or item.get("kind") or item.get("id") or "artifact")
         value = remote_label(item)
         if value:

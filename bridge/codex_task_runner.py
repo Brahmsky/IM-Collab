@@ -17,20 +17,22 @@ def build_codex_task_prompt(task_dir: Path) -> str:
     brief_instruction = _brief_instruction(task_dir)
     control_instruction = _control_instruction(task_dir)
     artifact_instruction = _artifact_instruction(task_dir)
-    return f"""你正在为 IM-Collab 任务生成本地办公产物。
+    return f"""你正在执行一个 IM-Collab 办公任务。
 
 请先阅读 `{task_path}`。
 {brief_instruction}
 {control_instruction}
 {artifact_instruction}
 
-请使用 Codex 和 superpowers 进行规划和生成。这一步不要调用飞书、`lark-cli`、Presenton、网络 API 或其他外部办公工具；后续会由 Python 交付代码负责发布产物。
+请使用 Codex 和 superpowers 进行规划和执行。你可以根据任务需要调用当前环境里可用的工具、CLI、服务或外部能力，包括飞书相关能力、`lark-cli`、Presenton、网络 API 等；不要为了遵守某个预设模板而放弃更直接、更可靠的执行路径。
 
-不要修改仓库里的源代码文件。你只能在 `{_display_path(task_dir)}` 目录内写入文件。
+核心边界只有两条：
+- 不要修改仓库里的业务源代码文件，除非用户明确要求你改仓库代码本身。
+- 无论你中间调用了什么工具，最终都要把本任务的可追踪结果落到 `{_display_path(task_dir)}` 内，并按协议写好状态和交付元数据。
 
 你必须产出：
 - `plan.json`：一个包含 `task_id` 和 `steps` 的对象；每个 step 必须带有 `id`、`title` 和 `status`。
-- 符合用户请求的本地工件文件。不要因为实现方便，就强行把所有任务都产出成 `document/slides/whiteboard`；如果用户要的是别的内容，就按真实需求产出。
+- 符合用户请求的工件文件或结果记录。不要因为实现方便，就强行把所有任务都产出成 `document/slides/whiteboard`；如果用户要的是别的内容，就按真实需求交付。
 - `artifacts.json`：必须包含 `task_id`、`items`、`summary` 和 `next_steps`。
 
 `items` 里的每一项都描述一个你生成出来的工件，例如：
@@ -47,7 +49,11 @@ def build_codex_task_prompt(task_dir: Path) -> str:
 }}
 ```
 
-`artifacts.json` 里的路径可以是相对路径，也可以是绝对路径，但都必须真实指向你刚生成的文件。请保留用户实际需要的工件结构，不要为了适配固定字段而改写需求。任务完成的标志是写出合法的 `artifacts.json`；不要在这一步自行发布到飞书。
+`artifacts.json` 里的路径可以是相对路径，也可以是绝对路径，但都必须真实指向你生成、下载、整理或更新后的结果文件。请保留用户实际需要的工件结构，不要为了适配固定字段而改写需求。
+
+如果你直接生成了飞书文档、飞书演示文稿、飞书画板或其他远端结果，也要把相关本地说明文件、导出文件、链接信息或远端元数据以 `items` 的形式写入 `artifacts.json`，保证后续链路能继续消费。
+
+任务完成的标志是写出合法的 `artifacts.json`。不要把“是否用了外部工具”当成限制，重点是结果真实可追踪、协议完整、交付符合要求。
 """
 
 
@@ -58,7 +64,7 @@ def _artifact_instruction(task_dir: Path) -> str:
     preview = artifacts_path.read_text(encoding="utf-8").strip()
     return f"""
 
-这个任务已经在 `{_display_path(artifacts_path)}` 里有一份交付元数据。如果用户是在继续修改上一轮结果，你要优先基于这些现有工件继续修改，并尽量更新已有的飞书工件，而不是无关地再造一份重复交付。
+这个任务已经在 `{_display_path(artifacts_path)}` 里有一份交付元数据。如果用户是在继续修改上一轮结果，你要优先基于这些现有工件继续修改，并尽量复用、更新或衔接已有的飞书工件，而不是无关地再造一份重复交付。
 
 当前工件如下：
 
@@ -66,7 +72,7 @@ def _artifact_instruction(task_dir: Path) -> str:
 {preview}
 ```
 
-当用户要求修改时，优先更新已有飞书工件；除非确实必要，否则不要创建无关的重复交付物。
+当用户要求修改时，优先更新已有工件链路；除非确实必要，否则不要创建无关的重复交付物。
 """
 
 

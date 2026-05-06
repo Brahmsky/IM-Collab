@@ -212,6 +212,10 @@ def test_task_console_web_plain_post_redirects_to_get_after_append(tmp_path: Pat
         "session_key: feishu:oc_group\nchat_id: oc_group\nsender_id: ou_user\n\n## User Message\n生成材料\n",
         encoding="utf-8",
     )
+    seen: dict[str, str] = {}
+
+    def fake_followup_runner(followup_task_dir: Path) -> None:
+        seen["task_dir"] = followup_task_dir.name
 
     server = build_server(
         "127.0.0.1",
@@ -219,7 +223,7 @@ def test_task_console_web_plain_post_redirects_to_get_after_append(tmp_path: Pat
         tasks_root,
         tmp_path / "events",
         ipv4_only=True,
-        followup_runner=lambda _task_dir: None,
+        followup_runner=fake_followup_runner,
         run_followup_in_background=False,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -245,6 +249,7 @@ def test_task_console_web_plain_post_redirects_to_get_after_append(tmp_path: Pat
 
     assert response.status == 303
     assert response.getheader("Location") == "/?task=task-1"
+    assert seen["task_dir"] == "task-1"
 
 
 def test_task_console_web_json_append_reuses_thread_without_resteering_preexisting_message(tmp_path: Path) -> None:

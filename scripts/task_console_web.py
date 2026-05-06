@@ -31,8 +31,9 @@ from bridge.cockpit_console_html import (
     render_user_chat_message_fragment,
 )
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, StdioAppServerTransport
+from bridge.server_app import create_app
 from bridge.task_control import read_control_commands
-from bridge.task_console_web import handle_console_action, render_console_html
+from bridge.task_console_web import handle_console_action_result, make_codex_app_server_retry, render_console_html
 from bridge.task_index import build_task_index
 from bridge.task_ops import retry_golembot_task
 from bridge.task_protocol import read_status
@@ -79,7 +80,12 @@ def build_server(
     followup_runner: FollowupRunner | None = None,
     run_followup_in_background: bool = True,
 ) -> ThreadingHTTPServer:
-    followup_runner = followup_runner or _make_codex_app_server_followup_runner(PROJECT_ROOT)
+    if followup_runner is None:
+        app_server_retry = _make_codex_app_server_followup_runner(PROJECT_ROOT)
+    else:
+        def app_server_retry(task_dir: Path, publish: bool = False) -> dict[str, object]:
+            followup_runner(task_dir)
+            return {"task_id": task_dir.name, "publish": publish}
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -109,7 +115,13 @@ def build_server(
                 self._handle_json_post(form)
                 return
             try:
-                flash = handle_console_action(tasks_root, form)
+                result = handle_console_action_result(
+                    tasks_root,
+                    form,
+                    app_server_retry=app_server_retry,
+                    run_followup_in_background=run_followup_in_background,
+                )
+                flash = result.flash
             except Exception as exc:
                 flash = f"error: {exc}"
             stay = (form.get("redirect_task") or form.get("task_id") or "").strip() or None
@@ -125,18 +137,16 @@ def build_server(
 
         def _handle_json_post(self, form: dict[str, str]) -> None:
             try:
-                handle_console_action(tasks_root, form)
-                backend = ""
-                if form.get("action") == "append":
-                    backend = _trigger_real_codex_backend(
-                        tasks_root / form.get("task_id", ""),
-                        followup_runner,
-                        run_followup_in_background=run_followup_in_background,
-                    )
+                result = handle_console_action_result(
+                    tasks_root,
+                    form,
+                    app_server_retry=app_server_retry,
+                    run_followup_in_background=run_followup_in_background,
+                )
                 payload = {
                     "ok": True,
                     "task_id": form.get("task_id", ""),
-                    "backend": backend,
+                    "backend": result.backend,
                     "message_html": render_user_chat_message_fragment(form.get("text", "")),
                     "pending_marker_html": render_pending_reply_marker_fragment(),
                     "typing_html": render_assistant_typing_fragment(),
@@ -213,55 +223,14 @@ def build_server(
     return ThreadingHTTPServer((bind_host, port), Handler)
 
 
-class _SharedCodexAppServerFollowupRunner:
-    def __init__(self, project_root: Path) -> None:
-        self.project_root = project_root
-        self._lock = threading.Lock()
-        self._transport: StdioAppServerTransport | None = None
-        self._backend: CodexAppServerBackend | None = None
-
-    def __call__(self, task_dir: Path) -> None:
-        with self._lock:
-            retry_golembot_task(
-                task_dir,
-                generator="app-server",
-                publish=False,
-                codex_backend=self._get_backend(),
-            )
-
-    def _get_backend(self) -> CodexAppServerBackend:
-        if self._backend is None:
-            self._transport = StdioAppServerTransport(cwd=self.project_root)
-            client = AppServerClient(self._transport)
-            client.initialize()
-            self._backend = CodexAppServerBackend(client, project_root=self.project_root)
-        return self._backend
-
-    def close(self) -> None:
-        if self._transport is not None:
-            self._transport.close()
-            self._transport = None
-            self._backend = None
-
-
-def _make_codex_app_server_followup_runner(project_root: Path) -> _SharedCodexAppServerFollowupRunner:
-    return _SharedCodexAppServerFollowupRunner(project_root)
-
-
-def _trigger_real_codex_backend(
-    task_dir: Path,
-    followup_runner: FollowupRunner,
-    *,
-    run_followup_in_background: bool,
-) -> str:
-    status = read_status(task_dir)
-    if status.get("state") == "running":
-        return "active_turn"
-    if run_followup_in_background:
-        threading.Thread(target=followup_runner, args=(task_dir,), daemon=True).start()
-    else:
-        followup_runner(task_dir)
-    return "codex_app_server"
+def _make_codex_app_server_followup_runner(project_root: Path):
+    return make_codex_app_server_retry(
+        project_root,
+        retry=retry_golembot_task,
+        transport_cls=StdioAppServerTransport,
+        client_cls=AppServerClient,
+        backend_cls=CodexAppServerBackend,
+    )
 
 
 def _task_stream_payload(tasks_root: Path, task_id: str) -> dict[str, object]:
@@ -382,20 +351,8 @@ def main() -> int:
     if args.ensure_demo:
         ensure_local_smoke_demo_task(tasks_root, PROJECT_ROOT)
 
-    try:
-        server = build_server(
-            args.host,
-            args.port,
-            tasks_root,
-            event_dir,
-            ipv4_only=args.ipv4_only,
-        )
-    except OSError as exc:
-        print(f"监听失败: {exc}", file=sys.stderr)
-        print("可尝试: --ipv4-only  （跳过 IPv6 双栈）或更换 --port。", file=sys.stderr)
-        return 1
-
-    port = _effective_tcp_port(server)
+    host = "127.0.0.1" if args.ipv4_only and _loopback_host_arg(args.host) else args.host
+    port = args.port
     _print_listen_urls(args.host, port)
     demo_status = tasks_root / DEMO_TASK_ID / "status.json"
     demo_url = f"http://127.0.0.1:{port}/?task={DEMO_TASK_ID}"
@@ -412,14 +369,16 @@ def main() -> int:
 
         threading.Thread(target=_browse, daemon=True).start()
     if args.print_url:
-        server.server_close()
         return 0
+    app = create_app(tasks_root=tasks_root, event_dir=event_dir)
     try:
-        server.serve_forever()
+        app.run(host=host, port=port, debug=False)
+    except OSError as exc:
+        print(f"监听失败: {exc}", file=sys.stderr)
+        print("可尝试: --ipv4-only  （跳过 IPv6 双栈）或更换 --port。", file=sys.stderr)
+        return 1
     except KeyboardInterrupt:
         return 0
-    finally:
-        server.server_close()
     return 0
 
 

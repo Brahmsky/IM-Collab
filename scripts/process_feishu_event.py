@@ -24,7 +24,7 @@ def process_event_file(
     dry_run_reply: bool = True,
     run_delivery: bool = False,
     runner: Callable[[list[str], str | None], str] | None = None,
-    generator: str = "local",
+    generator: str = "codex",
     codex_generator: Callable[[Path], None] | None = None,
 ) -> dict[str, Any]:
     payload = json.loads(event_path.read_text(encoding="utf-8"))
@@ -124,7 +124,7 @@ def main() -> int:
     parser.add_argument(
         "--generator",
         choices=("local", "codex"),
-        default="local",
+        default="codex",
         help="Artifact generator to use before delivery.",
     )
     args = parser.parse_args()

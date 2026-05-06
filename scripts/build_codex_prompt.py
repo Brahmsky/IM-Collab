@@ -7,7 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from bridge.codex_runner import build_codex_prompt
+from bridge.codex_task_runner import build_codex_task_prompt
 
 
 def main() -> int:
@@ -15,7 +15,7 @@ def main() -> int:
     parser.add_argument("task_dir", type=Path)
     args = parser.parse_args()
 
-    print(build_codex_prompt(args.task_dir))
+    print(build_codex_task_prompt(args.task_dir))
     return 0
 
 
