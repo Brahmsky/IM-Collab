@@ -1,8 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useTaskStore } from './taskStore'
-import { appendInstruction } from '@/utils/api'
-import type { ChatMessage } from '@/types/task'
+import type { ChatMessage, DisplayArtifact } from '@/types/task'
 
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
@@ -17,14 +16,17 @@ export const useChatStore = defineStore('chat', () => {
     return reversed.find(m => m.role === 'assistant') || null
   })
 
+  const currentAssistantMessageIndex = computed(() => {
+    for (let i = messages.value.length - 1; i >= 0; i -= 1) {
+      if (messages.value[i]?.role === 'assistant') return i
+    }
+    return -1
+  })
+
   async function loadMessages(newTaskId: string) {
     taskId.value = newTaskId
     await taskStore.fetchTaskDetail(newTaskId)
-    if (taskStore.selectedTaskDetail?.chat_messages) {
-      messages.value = [...taskStore.selectedTaskDetail.chat_messages]
-    } else {
-      messages.value = []
-    }
+    syncFromTaskDetail()
   }
 
   async function addUserMessage(text: string) {
@@ -61,14 +63,36 @@ export const useChatStore = defineStore('chat', () => {
     taskId.value = null
   }
 
+  function syncFromTaskDetail() {
+    const serverMessages = taskStore.selectedTaskDetail?.chat_messages
+    if (!serverMessages || serverMessages.length === 0) return
+    for (const sm of serverMessages) {
+      const exists = messages.value.some(
+        (m) => m.timestamp === sm.timestamp && m.text === sm.text && m.role === sm.role
+      )
+      if (!exists) {
+        messages.value.push(sm)
+      }
+    }
+    messages.value.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+  }
+
+  function artifactsForMessage(index: number): DisplayArtifact[] {
+    if (index !== currentAssistantMessageIndex.value) return []
+    return taskStore.currentTurnArtifacts
+  }
+
   return {
     messages,
     taskId,
     hasConversation,
     lastAssistantMessage,
+    currentAssistantMessageIndex,
     loadMessages,
     addUserMessage,
     addAssistantMessage,
+    artifactsForMessage,
+    syncFromTaskDetail,
     clearMessages
   }
 })

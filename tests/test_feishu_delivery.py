@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 from bridge.feishu_delivery import _local_artifact_path, deliver_task_to_feishu, publish_task_artifacts_to_feishu
-from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_protocol import create_task, read_artifacts, write_artifacts
 
 
@@ -20,9 +19,26 @@ def _write_task_artifacts(task_dir: Path, items: list[dict[str, object]]) -> Non
     )
 
 
+def _seed_local_publishable_artifacts(task_dir: Path) -> None:
+    document = task_dir / "document.md"
+    slides = task_dir / "slides.md"
+    board = task_dir / "whiteboard.mmd"
+    document.write_text("# 示例文档\n", encoding="utf-8")
+    slides.write_text("# Deck\n\n## Slide 1: Cover\nIntro\n", encoding="utf-8")
+    board.write_text("flowchart TD\nA-->B\n", encoding="utf-8")
+    _write_task_artifacts(
+        task_dir,
+        [
+            {"id": "document", "kind": "document", "type": "markdown", "path": document.as_posix()},
+            {"id": "slides", "kind": "slides", "type": "markdown", "path": slides.as_posix()},
+            {"id": "whiteboard", "kind": "whiteboard", "type": "mermaid", "path": board.as_posix()},
+        ],
+    )
+
+
 def test_deliver_task_to_feishu_publishes_artifacts_and_replies(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_123", "Generate office artifacts.")
-    run_local_smoke(task_dir)
+    _seed_local_publishable_artifacts(task_dir)
     calls: list[list[str]] = []
 
     def fake_run(args: list[str], input_text: str | None = None) -> str:
@@ -93,7 +109,7 @@ def test_deliver_task_to_feishu_publishes_artifacts_and_replies(tmp_path: Path) 
 
 def test_publish_task_artifacts_to_feishu_does_not_reply(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "im-om_123", "Generate office artifacts.")
-    run_local_smoke(task_dir)
+    _seed_local_publishable_artifacts(task_dir)
     calls: list[list[str]] = []
 
     def fake_run(args: list[str], input_text: str | None = None) -> str:

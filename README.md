@@ -185,7 +185,6 @@ rtk lark-cli doctor
 不接飞书，先确认仓库没坏：
 
 ```bash
-rtk .venv/bin/python scripts/smoke_demo.py
 rtk .venv/bin/python -m pytest
 ```
 
@@ -244,7 +243,6 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 - `--execute`：真的回复飞书；不加就是 dry-run。
 - `--publish`：真的创建飞书文档/Slides/白板。
 - 默认后端是 `app-server`。
-- `--generator local`：本地 mock，最快。
 - `--generator codex`：一次性 `codex exec` 兼容路径。
 - `--generator app-server`：Codex 持久 session 主路径。
   同一 `session-key` 会复用已有 `codex_thread_id`，运行中会把 `active_turn_id` 写到 `tasks/task-bindings.json`。
@@ -279,16 +277,6 @@ rtk .venv/bin/python scripts/run_event_consumer.py \
 ## 8. 手动跑一个任务
 
 不走飞书事件，直接手动跑：
-
-```bash
-rtk .venv/bin/python scripts/run_golembot_office_task.py \
-  --message "根据群聊生成项目方案、PPT 和白板" \
-  --session-key "feishu:oc_demo" \
-  --chat-id "oc_demo" \
-  --sender-id "ou_demo" \
-  --task-id "gb-local-demo" \
-  --generator local
-```
 
 换真实 Codex：
 
@@ -348,17 +336,13 @@ rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --port 8765
 
 ```bash
 # 终端 A：启动 Flask API 后端
-rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --ensure-demo
+rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1
 
 # 终端 B：启动 Vite 开发服务器（默认 :5173，自动代理 /api 到 Flask）
 rtk npm --prefix frontend run dev
 ```
 
-若 **`tasks/` 里没有任务**或从 **`scripts/` 子目录启动**导致读不到任务目录，可加 **`--ensure-demo`** 自动写入示例任务 `demo-local-smoke`（含会话绑定）；启动后终端会多打一行 **`示例任务页: http://127.0.0.1:<端口>/?task=demo-local-smoke`**。`--tasks-root` / `--event-dir` 的**相对路径一律相对仓库根目录解析**，不依赖当前工作目录。
-
-```bash
-rtk .venv/bin/python scripts/task_console_web.py --host 127.0.0.1 --ensure-demo
-```
+`--tasks-root` / `--event-dir` 的**相对路径一律相对仓库根目录解析**，不依赖当前工作目录。
 
 默认端口为 **8765**；若占用可改 `--port`，或在启动前设置环境变量 **`IM_COLLAB_CONSOLE_PORT`**（1–65535 的整数；显式传入 `--port` 时优先于环境变量）。例如 PowerShell：`$env:IM_COLLAB_CONSOLE_PORT=9876`。
 
@@ -432,7 +416,7 @@ rtk .venv/bin/python scripts/run_golembot_office_task.py \
   --chat-id "oc_demo" \
   --sender-id "ou_demo" \
   --task-id "gb-langextract-demo" \
-  --generator local \
+  --generator app-server \
   --brief-extractor langextract-deepseek
 ```
 

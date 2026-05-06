@@ -8,7 +8,76 @@ import {
   ackTask as apiAckTask,
   retryTask as apiRetryTask
 } from '@/utils/api'
-import type { TaskSummary, TaskDetailResponse } from '@/types/task'
+import type {
+  ArtifactItem,
+  DisplayArtifact,
+  DisplayArtifactKind,
+  TaskSummary,
+  TaskDetailResponse
+} from '@/types/task'
+
+const DISPLAYABLE_ARTIFACT_KINDS = new Set(['document', 'slides', 'whiteboard', 'sheet', 'base', 'file'])
+
+const toDisplayKind = (kind?: string): DisplayArtifactKind => {
+  switch ((kind || '').toLowerCase()) {
+    case 'document':
+    case 'docx':
+    case 'doc': return 'document'
+    case 'slides':
+    case 'slide':
+    case 'presentation':
+    case 'pptx':
+    case 'ppt': return 'slides'
+    case 'whiteboard':
+    case 'board':
+    case 'canvas': return 'whiteboard'
+    case 'sheet':
+    case 'spreadsheet':
+    case 'xlsx':
+    case 'excel': return 'sheet'
+    case 'base':
+    case 'bitable': return 'file'
+    default: return 'file'
+  }
+}
+
+const getArtifactUrl = (item: ArtifactItem) => {
+  const remote = item.remote
+  if (!remote) return undefined
+  return remote.url || remote.web_url || remote.permalink
+}
+
+const getArtifactValue = (item: ArtifactItem) => {
+  return getArtifactUrl(item) || item.path || item.remote?.whiteboard_token || item.remote?.token || item.remote?.id
+}
+
+const toDisplayArtifact = (item: ArtifactItem): DisplayArtifact | null => {
+  const kind = toDisplayKind(item.kind || item.id)
+  if (!DISPLAYABLE_ARTIFACT_KINDS.has(kind)) return null
+  return {
+    id: item.id || item.kind,
+    title: item.title || item.kind || item.id || 'Untitled',
+    kind,
+    url: getArtifactUrl(item),
+    value: getArtifactValue(item)
+  }
+}
+
+const normalizeArtifacts = (items?: ArtifactItem[]) => {
+  const seen = new Set<string>()
+  const output: DisplayArtifact[] = []
+
+  for (const item of items || []) {
+    const artifact = toDisplayArtifact(item)
+    if (!artifact) continue
+    const dedupeKey = `${artifact.kind}:${artifact.url || artifact.value || artifact.id}`
+    if (seen.has(dedupeKey)) continue
+    seen.add(dedupeKey)
+    output.push(artifact)
+  }
+
+  return output
+}
 
 export const useTaskStore = defineStore('task', () => {
   const tasks = ref<TaskSummary[]>([])
@@ -35,6 +104,18 @@ export const useTaskStore = defineStore('task', () => {
   const pendingControls = computed(() => {
     if (!selectedTaskDetail.value) return false
     return selectedTaskDetail.value.pending_controls
+  })
+
+  const currentTurnArtifacts = computed(() => {
+    const detail = selectedTaskDetail.value
+    if (!detail) return []
+    return normalizeArtifacts(detail.current_turn_artifacts ?? detail.artifacts?.items)
+  })
+
+  const sessionArtifacts = computed(() => {
+    const detail = selectedTaskDetail.value
+    if (!detail) return []
+    return normalizeArtifacts(detail.session_artifacts ?? detail.artifacts?.items)
   })
 
   async function fetchTasks() {
@@ -99,6 +180,8 @@ export const useTaskStore = defineStore('task', () => {
     selectedTask,
     tasksBySession,
     pendingControls,
+    currentTurnArtifacts,
+    sessionArtifacts,
     fetchTasks,
     fetchTaskDetail,
     selectTask,

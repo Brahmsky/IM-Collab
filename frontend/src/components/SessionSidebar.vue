@@ -27,16 +27,19 @@
 
       <div v-for="group in filteredGroups" :key="group.id" class="space-y-1">
         <div 
-          class="flex items-center px-2 py-1 cursor-pointer text-text-secondary hover:text-text-primary group/header"
+          class="flex items-center justify-between px-2 py-1.5 cursor-pointer text-text-primary hover:bg-surface-hover rounded-md group/header"
           @click="toggleGroup(group.id)"
         >
-          <span class="material-symbols-outlined text-sm mr-1 transition-transform" :class="{ '-rotate-90': !isExpanded(group.id) }">
+          <span class="min-w-0 flex items-center gap-2">
+            <span class="material-symbols-outlined text-[20px] text-text-primary">group</span>
+            <span class="text-[13px] font-medium truncate">{{ group.name }}</span>
+          </span>
+          <span class="material-symbols-outlined text-[16px] text-text-secondary transition-transform shrink-0" :class="{ 'rotate-180': isExpanded(group.id) }">
             expand_more
           </span>
-          <span class="text-xs font-medium">{{ group.name }}</span>
         </div>
 
-        <div v-show="isExpanded(group.id)" class="space-y-0.5">
+        <div v-show="isExpanded(group.id)" class="ml-[22px] border-l border-border pl-3 space-y-0.5">
           <div 
             v-for="task in group.tasks" 
             :key="task.task_id"
@@ -157,11 +160,14 @@ const formatTime = (isoString?: string) => {
   if (!isoString) return ''
   const date = new Date(isoString)
   const now = new Date()
-  const isToday = date.toDateString() === now.toDateString()
-  if (isToday) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-  }
-  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+  const seconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000))
+  if (seconds < 60) return '刚刚'
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  const days = Math.floor(hours / 24)
+  return `${days} 天前`
 }
 
 const getStateBadgeClass = (state: string) => {
@@ -190,7 +196,8 @@ const getStateText = (state: string) => {
 const filteredGroups = computed(() => {
   const groups: { id: string, name: string, tasks: TaskSummary[] }[] = []
   for (const [key, tasks] of Object.entries(sessionStore.groupedTasks)) {
-    groups.push({ id: key, name: key, tasks })
+    const name = tasks[0]?.chat_name || tasks[0]?.session_title || key
+    groups.push({ id: key, name, tasks })
   }
   return groups
 })

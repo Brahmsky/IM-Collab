@@ -1,42 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
-import socket
 import sys
-import threading
-import time
-import traceback
-from datetime import UTC, datetime
-from html import escape
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qs, quote, urlparse
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from bridge.console_demo_seed import (
-    DEMO_TASK_ID,
-    ensure_local_smoke_demo_task,
-    resolve_repo_relative_path,
-)
-from bridge.cockpit_console_html import (
-    render_assistant_typing_fragment,
-    render_assistant_bubble_fragment,
-    render_pending_reply_marker_fragment,
-    render_task_chat_fragment,
-    render_user_chat_message_fragment,
-)
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, StdioAppServerTransport
 from bridge.server_app import create_app
-from bridge.task_control import read_control_commands
-from bridge.task_console_web import handle_console_action_result, make_codex_app_server_retry, render_console_html
-from bridge.task_index import build_task_index
+from bridge.task_console_web import make_codex_app_server_retry
 from bridge.task_ops import retry_golembot_task
-from bridge.task_protocol import read_status
 
 FollowupRunner = Callable[[Path], None]
 
@@ -54,175 +30,6 @@ def _loopback_host_arg(host: str) -> bool:
     return host in {"127.0.0.1", "localhost", "::1"}
 
 
-def _dualstack_loopback_server(
-    port: int,
-    handler: type[BaseHTTPRequestHandler],
-) -> ThreadingHTTPServer:
-    """Listen on ::1 with IPv4-mapped IPv6 so http://localhost works when it resolves to ::1."""
-
-    class _DualStackLoopback(ThreadingHTTPServer):
-        address_family = socket.AF_INET6
-
-        def server_bind(self) -> None:
-            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-            super().server_bind()
-
-    return _DualStackLoopback(("::1", port, 0, 0), handler)
-
-
-def build_server(
-    host: str,
-    port: int,
-    tasks_root: Path,
-    event_dir: Path,
-    *,
-    ipv4_only: bool = False,
-    followup_runner: FollowupRunner | None = None,
-    run_followup_in_background: bool = True,
-) -> ThreadingHTTPServer:
-    if followup_runner is None:
-        app_server_retry = _make_codex_app_server_followup_runner(PROJECT_ROOT)
-    else:
-        def app_server_retry(task_dir: Path, publish: bool = False) -> dict[str, object]:
-            followup_runner(task_dir)
-            return {"task_id": task_dir.name, "publish": publish}
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            parsed_url = urlparse(self.path)
-            qs = parse_qs(parsed_url.query)
-            if parsed_url.path == "/api/task-stream":
-                self._send_task_stream((qs.get("task") or [""])[0])
-                return
-            task = (qs.get("task") or [None])[0]
-            q = (qs.get("q") or [""])[0]
-            try:
-                html = render_console_html(
-                    tasks_root,
-                    event_dir,
-                    selected_task_id=task,
-                    search_query=q,
-                )
-            except Exception:
-                html = _error_page_html(traceback.format_exc())
-            self._send_html(html)
-
-        def do_POST(self) -> None:
-            length = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(length).decode("utf-8")
-            form = {key: values[-1] for key, values in parse_qs(body, keep_blank_values=True).items()}
-            if self._wants_json():
-                self._handle_json_post(form)
-                return
-            try:
-                result = handle_console_action_result(
-                    tasks_root,
-                    form,
-                    app_server_retry=app_server_retry,
-                    run_followup_in_background=run_followup_in_background,
-                )
-                flash = result.flash
-            except Exception as exc:
-                flash = f"error: {exc}"
-            stay = (form.get("redirect_task") or form.get("task_id") or "").strip() or None
-            self._redirect_after_post(stay, form.get("q", ""), flash)
-
-        def log_message(self, format: str, *args: object) -> None:
-            return
-
-        def _wants_json(self) -> bool:
-            accept = self.headers.get("Accept", "")
-            requested_with = self.headers.get("X-Requested-With", "")
-            return "application/json" in accept or requested_with.lower() in {"fetch", "xmlhttprequest"}
-
-        def _handle_json_post(self, form: dict[str, str]) -> None:
-            try:
-                result = handle_console_action_result(
-                    tasks_root,
-                    form,
-                    app_server_retry=app_server_retry,
-                    run_followup_in_background=run_followup_in_background,
-                )
-                payload = {
-                    "ok": True,
-                    "task_id": form.get("task_id", ""),
-                    "backend": result.backend,
-                    "message_html": render_user_chat_message_fragment(form.get("text", "")),
-                    "pending_marker_html": render_pending_reply_marker_fragment(),
-                    "typing_html": render_assistant_typing_fragment(),
-                    "stream_url": f"/api/task-stream?task={quote(form.get('task_id', ''), safe='')}",
-                }
-                self._send_json(payload)
-            except Exception as exc:
-                self._send_json({"ok": False, "error": str(exc)}, status=400)
-
-        def _send_task_stream(self, task_id: str) -> None:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
-            last_payload = ""
-            for _ in range(90):
-                payload = _task_stream_payload(tasks_root, task_id)
-                encoded = json.dumps(payload, ensure_ascii=False)
-                if encoded != last_payload:
-                    try:
-                        self.wfile.write(f"data: {encoded}\n\n".encode("utf-8"))
-                        self.wfile.flush()
-                    except BrokenPipeError:
-                        return
-                    last_payload = encoded
-                if payload.get("done"):
-                    return
-                time.sleep(1)
-
-        def _send_json(self, payload: dict, status: int = 200) -> None:
-            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def _redirect_after_post(self, task_id: str | None, q: str, flash: str) -> None:
-            params = []
-            if task_id:
-                params.append(("task", task_id))
-            if q:
-                params.append(("q", q))
-            if flash:
-                params.append(("flash", flash))
-            location = "/"
-            if params:
-                location += "?" + "&".join(f"{quote(key, safe='')}={quote(value, safe='')}" for key, value in params)
-            self.send_response(303)
-            self.send_header("Location", location)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
-
-        def _send_html(self, html: str) -> None:
-            body = html.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-    if _loopback_host_arg(host):
-        if ipv4_only:
-            bind_host = "127.0.0.1"
-        else:
-            try:
-                return _dualstack_loopback_server(port, Handler)
-            except OSError:
-                pass
-            bind_host = "127.0.0.1"
-    else:
-        bind_host = host
-    return ThreadingHTTPServer((bind_host, port), Handler)
-
-
 def _make_codex_app_server_followup_runner(project_root: Path):
     return make_codex_app_server_retry(
         project_root,
@@ -233,62 +40,11 @@ def _make_codex_app_server_followup_runner(project_root: Path):
     )
 
 
-def _task_stream_payload(tasks_root: Path, task_id: str) -> dict[str, object]:
-    selected = next((task for task in build_task_index(tasks_root) if task.task_id == task_id), None)
-    if selected is None:
-        return {"ok": False, "done": True, "error": "task not found"}
-    pending_controls = _has_control_newer_than_status(selected.path)
-    return {
-        "ok": True,
-        "done": selected.state in {"failed", "waiting_for_user"} or (selected.state == "completed" and not pending_controls),
-        "state": selected.state,
-        "chat_html": render_task_chat_fragment(selected),
-        "assistant_html": render_assistant_bubble_fragment(selected),
-        "pending_controls": pending_controls,
-    }
-
-
-def _has_control_newer_than_status(task_dir: Path) -> bool:
-    try:
-        status = read_status(task_dir)
-    except Exception:
-        return False
-    status_time = _parse_iso_datetime(str(status.get("updated_at") or ""))
-    if status_time is None:
-        return False
-    for command in read_control_commands(task_dir):
-        if command.get("type") not in {"append_instruction", "confirm_instruction", "card_action"}:
-            continue
-        command_time = _parse_iso_datetime(str(command.get("timestamp") or ""))
-        if command_time is None or command_time > status_time:
-            return True
-    return False
-
-
-def _parse_iso_datetime(raw: str) -> datetime | None:
-    value = raw.strip()
-    if not value:
-        return None
-    try:
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC)
-
-
-def _error_page_html(trace: str) -> str:
-    return (
-        "<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">"
-        "<title>控制台错误</title></head><body><h1>渲染失败</h1>"
-        f"<pre>{escape(trace)}</pre></body></html>"
-    )
-
-
-def _effective_tcp_port(server: ThreadingHTTPServer) -> int:
-    addr = server.server_address
-    return int(addr[1])
+def _resolve_repo_relative_path(path: Path) -> Path:
+    expanded = path.expanduser()
+    if expanded.is_absolute():
+        return expanded.resolve()
+    return (PROJECT_ROOT / expanded).resolve()
 
 
 def _print_listen_urls(host_arg: str, effective_port: int) -> None:
@@ -329,11 +85,6 @@ def main() -> int:
         help="Event directory (relative paths are resolved from the repository root).",
     )
     parser.add_argument(
-        "--ensure-demo",
-        action="store_true",
-        help=f"Create {DEMO_TASK_ID} sample task + bindings if missing (for cockpit preview).",
-    )
-    parser.add_argument(
         "--ipv4-only",
         action="store_true",
         help="Listen on 127.0.0.1 only (skip IPv6 dual-stack). Use when connection to localhost fails.",
@@ -346,18 +97,12 @@ def main() -> int:
     parser.add_argument("--print-url", action="store_true", help="Print the URL and exit without serving.")
     args = parser.parse_args()
 
-    tasks_root = resolve_repo_relative_path(args.tasks_root, PROJECT_ROOT)
-    event_dir = resolve_repo_relative_path(args.event_dir, PROJECT_ROOT)
-    if args.ensure_demo:
-        ensure_local_smoke_demo_task(tasks_root, PROJECT_ROOT)
+    tasks_root = _resolve_repo_relative_path(args.tasks_root)
+    event_dir = _resolve_repo_relative_path(args.event_dir)
 
     host = "127.0.0.1" if args.ipv4_only and _loopback_host_arg(args.host) else args.host
     port = args.port
     _print_listen_urls(args.host, port)
-    demo_status = tasks_root / DEMO_TASK_ID / "status.json"
-    demo_url = f"http://127.0.0.1:{port}/?task={DEMO_TASK_ID}"
-    if demo_status.is_file():
-        print(f"示例任务页: {demo_url}", flush=True)
     if args.open:
         import threading
         import time
@@ -365,7 +110,7 @@ def main() -> int:
 
         def _browse() -> None:
             time.sleep(0.45)
-            webbrowser.open(demo_url if demo_status.is_file() else f"http://127.0.0.1:{port}/")
+            webbrowser.open(f"http://127.0.0.1:{port}/")
 
         threading.Thread(target=_browse, daemon=True).start()
     if args.print_url:

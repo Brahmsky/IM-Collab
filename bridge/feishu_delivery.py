@@ -110,10 +110,17 @@ def publish_task_artifacts_to_feishu(
     whiteboard_remote = _feishu_remote(whiteboard_item)
     whiteboard_target = _whiteboard_target_item(whiteboard_item, whiteboard_remote, published.get("document"))
     if whiteboard_item is not None and whiteboard_remote is not None and whiteboard_path is None:
+        whiteboard_url = _whiteboard_target_url({"remote": whiteboard_remote}, published.get("document"))
         published["whiteboard"] = upsert_item(
             artifacts,
             str(whiteboard_item.get("id") or whiteboard_item.get("kind") or "whiteboard"),
-            {**whiteboard_item, "remote": whiteboard_remote},
+            {
+                **whiteboard_item,
+                "remote": {
+                    **whiteboard_remote,
+                    **({"url": whiteboard_url} if whiteboard_url and not whiteboard_remote.get("url") else {}),
+                },
+            },
         )
     elif whiteboard_item is not None and whiteboard_path is not None and whiteboard_target is not None:
         target = ensure_whiteboard_target(whiteboard_target, runner=runner)
@@ -131,6 +138,7 @@ def publish_task_artifacts_to_feishu(
                 "remote": {
                     "provider": "feishu",
                     "document_id": target.get("document_id"),
+                    "url": _whiteboard_target_url(whiteboard_target, published.get("document")),
                     "block_id": target.get("block_id"),
                     "whiteboard_token": target["whiteboard_token"],
                     "created_node_id": whiteboard_update["created_node_id"],
@@ -211,3 +219,13 @@ def _append_publish_summary(summary: str) -> str:
     if not summary:
         return suffix
     return f"{summary} {suffix}"
+
+
+def _whiteboard_target_url(target_item: dict[str, Any], document_item: dict[str, Any] | None) -> str | None:
+    target_remote = _feishu_remote(target_item)
+    if target_remote and target_remote.get("url"):
+        return str(target_remote["url"])
+    document_remote = _feishu_remote(document_item)
+    if document_remote and document_remote.get("url"):
+        return str(document_remote["url"])
+    return None

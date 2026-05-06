@@ -9,9 +9,9 @@
         <span 
           v-if="taskStore.selectedTask"
           class="text-xs px-2 py-0.5 rounded-full border"
-          :class="getStateBadgeClass(taskStore.selectedTask.state)"
+          :class="currentStateBadgeClass"
         >
-          {{ getStateText(taskStore.selectedTask.state) }}
+          {{ currentStateText }}
         </span>
       </div>
     </div>
@@ -27,22 +27,13 @@
       </div>
       
       <template v-else>
-        <!-- Empty State / Initial Request -->
-        <div v-if="chatStore.messages.length === 0" class="flex justify-center mt-10">
-          <div class="max-w-2xl text-center space-y-4">
-            <div class="w-16 h-16 mx-auto bg-tag-bg-blue text-primary rounded-full flex items-center justify-center mb-4">
-              <span class="material-symbols-outlined text-3xl">flight_takeoff</span>
-            </div>
-            <h3 class="text-xl font-medium text-text-primary">新任务已就绪</h3>
-            <p class="text-text-secondary bg-surface p-4 rounded-lg border border-border text-left shadow-sm">
-              {{ taskStore.selectedTask?.summary || '等待接收指令...' }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Messages -->
         <div v-for="(msg, idx) in chatStore.messages" :key="idx">
-          <ChatBubble :role="msg.role" :text="msg.text" :timestamp="msg.timestamp" />
+          <ChatBubble
+            :role="msg.role"
+            :text="msg.text"
+            :timestamp="msg.timestamp"
+            :artifacts="chatStore.artifactsForMessage(idx)"
+          />
         </div>
 
         <!-- Streaming Indicator -->
@@ -58,15 +49,15 @@
     </div>
 
     <!-- Bottom Input Area -->
-    <div class="p-4 bg-background border-t border-border shrink-0">
-      <div class="max-w-4xl mx-auto">
-        <AppendForm 
-          v-if="taskStore.selectedTaskId"
-          :taskId="taskStore.selectedTaskId"
-          :disabled="sseStore.isStreaming || !taskStore.selectedTask"
-          @submit="handleAppend"
-        />
-      </div>
+    <div class="shrink-0">
+      <AppendForm 
+        v-if="taskStore.selectedTaskId"
+        :taskId="taskStore.selectedTaskId"
+        :interruptible="interruptMode"
+        :interrupt-busy="interruptBusy"
+        @submit="handleAppend"
+        @interrupt="handleInterrupt"
+      />
     </div>
   </div>
 </template>
@@ -86,6 +77,8 @@ const chatStore = useChatStore()
 const sseStore = useSseStore()
 
 const scrollContainer = ref<HTMLElement | null>(null)
+const interruptBusy = ref(false)
+const justInterrupted = ref(false)
 
 const taskTitle = computed(() => {
   const task = taskStore.selectedTask
@@ -93,31 +86,57 @@ const taskTitle = computed(() => {
   return task.chat_name || task.session_title || task.task_id
 })
 
-const getStateBadgeClass = (state: string) => {
+const interruptMode = computed(() => {
+  if (justInterrupted.value) return false
+  const task = taskStore.selectedTask
+  if (!task) return false
+  return task.state === 'running' || sseStore.isStreaming
+})
+
+const currentStateBadgeClass = computed(() => {
+  if (justInterrupted.value) return 'bg-tag-bg-gray text-text-secondary border-border'
+  const state = taskStore.selectedTask?.state
   switch (state) {
     case 'running': return 'bg-tag-bg-blue text-primary border-primary/20'
     case 'completed': return 'bg-[#E8F8F2] text-success border-success/20'
     case 'failed': return 'bg-[#FFECE8] text-error border-error/20'
     case 'waiting_for_user': return 'bg-[#FFF2E5] text-warning border-warning/20'
-    case 'pending_reply': return 'bg-tag-bg-gray text-text-secondary border-border'
     default: return 'bg-tag-bg-gray text-text-secondary border-border'
   }
-}
+})
 
-const getStateText = (state: string) => {
+const currentStateText = computed(() => {
+  if (justInterrupted.value) return '已中断'
+  const state = taskStore.selectedTask?.state
   switch (state) {
     case 'running': return '运行中'
     case 'completed': return '已完成'
     case 'failed': return '失败'
     case 'waiting_for_user': return '待确认'
-    case 'pending_reply': return '待回复'
     case 'queued': return '排队中'
-    default: return state
+    default: return state || ''
+  }
+})
+
+const handleInterrupt = async () => {
+  if (!taskStore.selectedTaskId || interruptBusy.value) return
+  interruptBusy.value = true
+  try {
+    await taskStore.interruptTask(taskStore.selectedTaskId)
+    sseStore.disconnectStream()
+    justInterrupted.value = true
+    await taskStore.fetchTasks()
+    await taskStore.fetchTaskDetail(taskStore.selectedTaskId)
+  } catch (e) {
+    console.error('Failed to interrupt task', e)
+  } finally {
+    interruptBusy.value = false
   }
 }
 
 const handleAppend = async (text: string) => {
   if (!taskStore.selectedTaskId) return
+  justInterrupted.value = false
   try {
     await chatStore.addUserMessage(text)
     sseStore.connectStream(taskStore.selectedTaskId)
@@ -137,7 +156,17 @@ const scrollToBottom = () => {
 
 watch(() => chatStore.messages.length, scrollToBottom)
 watch(() => sseStore.streamTexts.length, scrollToBottom)
-watch(() => taskStore.selectedTaskId, () => {
+watch(() => taskStore.selectedTaskId, (taskId) => {
+  if (taskId) {
+    chatStore.loadMessages(taskId)
+  }
   setTimeout(scrollToBottom, 100)
+  interruptBusy.value = false
+})
+
+watch(() => sseStore.streamState, (state) => {
+  if (state === 'done') {
+    interruptBusy.value = false
+  }
 })
 </script>

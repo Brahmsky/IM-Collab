@@ -21,7 +21,7 @@ def main() -> int:
     parser.add_argument("--token", default="local-golembot-spike")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--publish", action="store_true", help="Ask GolemBot to publish real Feishu office artifacts.")
-    parser.add_argument("--generator", choices=("codex", "local", "app-server"), default="app-server")
+    parser.add_argument("--generator", choices=("codex", "app-server"), default="app-server")
     parser.add_argument("--execute-reply", action="store_true", help="Reply to the source Feishu message.")
     parser.add_argument("--dry-run-reply", action="store_true", help="Build a dry-run Feishu reply from GolemBot output.")
     parser.add_argument("--reply-from-response", type=Path, help="Use a saved forwarder response JSON instead of calling GolemBot.")

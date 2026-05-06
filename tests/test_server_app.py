@@ -27,7 +27,7 @@ EXPECTED_TASK_SUMMARY = {
     "artifact_outputs": [
         ["项目方案", "https://docs.example.com/doc_123"],
         ["答辩 PPT", "https://slides.example.com/slide_123"],
-        ["流程白板", "wb_123"],
+        ["流程白板", "https://docs.example.com/doc_123#whiteboard"],
     ],
 }
 
@@ -95,11 +95,94 @@ EXPECTED_ARTIFACTS = {
             "title": "流程白板",
             "remote": {
                 "provider": "feishu",
+                "url": "https://docs.example.com/doc_123#whiteboard",
                 "whiteboard_token": "wb_123",
             },
         },
     ],
 }
+
+EXPECTED_CURRENT_TURN_ARTIFACTS = [
+    {
+        "id": "proposal",
+        "kind": "document",
+        "title": "项目方案",
+        "label": "项目方案",
+        "path": None,
+        "remote": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_123",
+            "document_id": "doc_123",
+        },
+        "url": "https://docs.example.com/doc_123",
+        "clickable": True,
+        "source_task_id": TASK_ID,
+    },
+    {
+        "id": "deck",
+        "kind": "slides",
+        "title": "答辩 PPT",
+        "label": "答辩 PPT",
+        "path": None,
+        "remote": {
+            "provider": "feishu",
+            "url": "https://slides.example.com/slide_123",
+            "xml_presentation_id": "slide_123",
+        },
+        "url": "https://slides.example.com/slide_123",
+        "clickable": True,
+        "source_task_id": TASK_ID,
+    },
+    {
+        "id": "board",
+        "kind": "whiteboard",
+        "title": "流程白板",
+        "label": "流程白板",
+        "path": None,
+        "remote": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_123#whiteboard",
+            "whiteboard_token": "wb_123",
+        },
+        "url": "https://docs.example.com/doc_123#whiteboard",
+        "clickable": True,
+        "source_task_id": TASK_ID,
+    },
+]
+
+EXPECTED_SESSION_ARTIFACTS = [
+    *EXPECTED_CURRENT_TURN_ARTIFACTS,
+    {
+        "id": "meeting-notes",
+        "kind": "document",
+        "title": "会前纪要",
+        "label": "会前纪要",
+        "path": None,
+        "remote": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_122",
+            "document_id": "doc_122",
+        },
+        "url": "https://docs.example.com/doc_122",
+        "clickable": True,
+        "source_task_id": "task-contract-0",
+    },
+    {
+        "id": "history-board",
+        "kind": "whiteboard",
+        "title": "历史流程白板",
+        "label": "历史流程白板",
+        "path": None,
+        "remote": {
+            "provider": "feishu",
+            "label": "历史流程白板",
+            "whiteboard_token": "wb_122",
+        },
+        "url": None,
+        "clickable": False,
+        "source_task_id": "task-contract-0",
+    },
+]
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
@@ -157,6 +240,7 @@ def contract_workspace(tmp_path: Path) -> dict[str, Any]:
     tasks_root = tmp_path / "tasks"
     event_dir = tmp_path / "events"
     task_dir = tasks_root / TASK_ID
+    previous_task_dir = tasks_root / "task-contract-0"
 
     _write_json(
         task_dir / "status.json",
@@ -169,6 +253,76 @@ def contract_workspace(tmp_path: Path) -> dict[str, Any]:
         },
     )
     _write_json(task_dir / "artifacts.json", EXPECTED_ARTIFACTS)
+    _write_json(
+        previous_task_dir / "status.json",
+        {
+            "task_id": "task-contract-0",
+            "state": "completed",
+            "created_at": "2026-05-05T07:30:00+00:00",
+            "updated_at": "2026-05-05T07:50:00+00:00",
+            "error": None,
+        },
+    )
+    _write_json(
+        previous_task_dir / "artifacts.json",
+        {
+            "task_id": "task-contract-0",
+            "summary": "已产出会前纪要和早期白板。",
+            "next_steps": [],
+            "items": [
+                {
+                    "id": "meeting-notes",
+                    "kind": "document",
+                    "title": "会前纪要",
+                    "remote": {
+                        "provider": "feishu",
+                        "url": "https://docs.example.com/doc_122",
+                        "document_id": "doc_122",
+                    },
+                },
+                {
+                    "id": "history-board",
+                    "kind": "whiteboard",
+                    "title": "历史流程白板",
+                    "remote": {
+                        "provider": "feishu",
+                        "label": "历史流程白板",
+                        "whiteboard_token": "wb_122",
+                    },
+                },
+            ],
+        },
+    )
+    _write_json(
+        tasks_root / "task-other" / "status.json",
+        {
+            "task_id": "task-other",
+            "state": "completed",
+            "created_at": "2026-05-05T07:00:00+00:00",
+            "updated_at": "2026-05-05T07:10:00+00:00",
+            "error": None,
+        },
+    )
+    _write_json(
+        tasks_root / "task-other" / "artifacts.json",
+        {
+            "task_id": "task-other",
+            "summary": "其他会话的材料。",
+            "next_steps": [],
+            "items": [
+                {
+                    "id": "other-doc",
+                    "kind": "document",
+                    "title": "其他会话文档",
+                    "remote": {
+                        "provider": "feishu",
+                        "url": "https://docs.example.com/doc_other",
+                        "document_id": "doc_other",
+                    },
+                }
+            ],
+        },
+    )
     _write_jsonl(task_dir / "chat_messages.jsonl", EXPECTED_CHAT_MESSAGES)
     _write_jsonl(task_dir / "control.jsonl", EXPECTED_CONTROL_COMMANDS)
     _write_json(
@@ -183,7 +337,27 @@ def contract_workspace(tmp_path: Path) -> dict[str, Any]:
                 "active_turn_id": "turn_456",
                 "active_task_id": TASK_ID,
                 "last_task_id": TASK_ID,
-            }
+            },
+            f"{SESSION_KEY}:history": {
+                "session_key": SESSION_KEY,
+                "session_title": SESSION_TITLE,
+                "chat_name": "项目答辩群",
+                "chat_id": "oc_demo",
+                "codex_thread_id": "thread_122",
+                "active_turn_id": None,
+                "active_task_id": None,
+                "last_task_id": "task-contract-0",
+            },
+            "feishu:oc_other": {
+                "session_key": "feishu:oc_other",
+                "session_title": "其他会话",
+                "chat_name": "其他群聊",
+                "chat_id": "oc_other",
+                "codex_thread_id": "thread_other",
+                "active_turn_id": None,
+                "active_task_id": None,
+                "last_task_id": "task-other",
+            },
         },
     )
     _write_json(event_dir / "im.message.receive_v1_20260505_a.json", {"event": "a"})
@@ -210,8 +384,9 @@ def test_get_tasks_returns_task_summaries_and_event_overview(client: Any) -> Non
     response = client.get("/api/tasks")
 
     assert response.status_code == 200
-    assert _json(response) == {
-        "tasks": [EXPECTED_TASK_SUMMARY],
+    payload = _json(response)
+    assert payload == {
+        "tasks": payload["tasks"],
         "events": {
             "total": 2,
             "latest_files": [
@@ -220,6 +395,8 @@ def test_get_tasks_returns_task_summaries_and_event_overview(client: Any) -> Non
             ],
         },
     }
+    assert [task["task_id"] for task in payload["tasks"]] == [TASK_ID, "task-contract-0", "task-other"]
+    assert payload["tasks"][0] == EXPECTED_TASK_SUMMARY
 
 
 def test_get_task_detail_returns_messages_controls_artifacts_and_pending_flag(client: Any) -> None:
@@ -231,6 +408,8 @@ def test_get_task_detail_returns_messages_controls_artifacts_and_pending_flag(cl
         "chat_messages": EXPECTED_CHAT_MESSAGES,
         "control_commands": EXPECTED_CONTROL_COMMANDS,
         "artifacts": EXPECTED_ARTIFACTS,
+        "current_turn_artifacts": EXPECTED_CURRENT_TURN_ARTIFACTS,
+        "session_artifacts": EXPECTED_SESSION_ARTIFACTS,
         "pending_controls": True,
     }
 

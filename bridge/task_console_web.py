@@ -8,10 +8,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, StdioAppServerTransport
-from bridge.cockpit_console_html import render_cockpit_document
 from bridge.chat_messages import append_chat_message, seed_chat_messages_from_task
 from bridge.task_control import append_control_command
-from bridge.task_index import build_task_index, summarize_events
 from bridge.task_ops import ack_task, retry_golembot_task
 from bridge.task_protocol import read_artifacts, read_status
 
@@ -85,25 +83,6 @@ def make_codex_app_server_retry(
     )
 
 
-def render_console_html(
-    tasks_root: Path,
-    event_dir: Path,
-    flash: str = "",
-    *,
-    selected_task_id: str | None = None,
-    search_query: str = "",
-) -> str:
-    tasks = build_task_index(tasks_root)
-    events = summarize_events(event_dir)
-    return render_cockpit_document(
-        tasks,
-        events,
-        flash,
-        selected_task_id=selected_task_id,
-        search_query=search_query,
-    )
-
-
 def handle_console_action(
     tasks_root: Path,
     form: dict[str, str],
@@ -159,7 +138,7 @@ def handle_console_action_result(
         return ConsoleActionResult()
 
     if action == "retry":
-        generator = form.get("generator") or "local"
+        generator = form.get("generator") or "app-server"
         publish = form.get("publish") in {"1", "true", "on"}
         if generator == "app-server" and app_server_retry is not None:
             app_server_retry(task_dir, publish)

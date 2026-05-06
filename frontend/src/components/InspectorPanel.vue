@@ -40,81 +40,20 @@
         </div>
       </div>
 
-      <!-- Action Buttons -->
-      <div class="space-y-3 pt-2 border-t border-border">
-        <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Actions</h3>
-        
-        <div v-if="task.state === 'running'" class="w-full">
-          <button 
-            @click="handleInterrupt"
-            class="w-full py-2 bg-white border border-error text-error hover:bg-error hover:text-white rounded-md transition-colors text-sm font-medium flex items-center justify-center shadow-sm"
-          >
-            <span class="material-symbols-outlined text-[18px] mr-1">stop_circle</span>
-            打断
-          </button>
-        </div>
-
-        <div v-else-if="task.state === 'waiting_for_user'" class="space-y-3">
-          <div class="space-y-2">
-            <label class="text-xs text-text-secondary">确认说明 / 补充要求</label>
-            <textarea 
-              v-model="ackNote"
-              placeholder="可以输入补充信息..."
-              class="w-full bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded-md p-2 text-sm text-text-primary outline-none resize-none h-20 transition-all"
-            ></textarea>
-          </div>
-          <div class="flex space-x-2">
-            <button 
-              @click="handleAck"
-              class="flex-1 py-2 bg-primary text-white hover:bg-primary-hover rounded-md transition-colors text-sm font-medium flex items-center justify-center shadow-sm"
-            >
-              <span class="material-symbols-outlined text-[18px] mr-1">check_circle</span>
-              确认并继续
-            </button>
-            <button 
-              @click="handleRetry"
-              class="px-3 py-2 bg-white border border-border text-text-primary hover:bg-surface-hover rounded-md transition-colors text-sm font-medium flex items-center justify-center shadow-sm"
-              title="重新执行"
-            >
-              <span class="material-symbols-outlined text-[18px]">refresh</span>
-            </button>
-          </div>
-        </div>
-
-        <div v-else-if="taskStore.pendingControls" class="w-full">
-          <button 
-            @click="handleRetry"
-            class="w-full py-2 bg-primary text-white hover:bg-primary-hover rounded-md transition-colors text-sm font-medium flex items-center justify-center shadow-sm"
-          >
-            <span class="material-symbols-outlined text-[18px] mr-1">play_arrow</span>
-            执行补充
-          </button>
-        </div>
-
-        <div v-else-if="['completed', 'failed'].includes(task.state)" class="w-full">
-          <button 
-            @click="handleRetry"
-            class="w-full py-2 bg-white border border-border text-text-primary hover:bg-surface-hover rounded-md transition-colors text-sm font-medium flex items-center justify-center shadow-sm"
-          >
-            <span class="material-symbols-outlined text-[18px] mr-1">refresh</span>
-            重试
-          </button>
-        </div>
-      </div>
-
       <!-- Artifacts Section -->
-      <div v-if="hasArtifacts" class="space-y-3 pt-2 border-t border-border">
+      <div class="space-y-3 pt-2 border-t border-border">
         <h3 class="text-xs font-semibold text-text-secondary uppercase tracking-wider">Artifacts</h3>
-        <div class="space-y-2">
+        <div v-if="displayArtifacts.length > 0" class="space-y-2">
           <ArtifactCard 
-            v-for="(item, idx) in taskStore.selectedTaskDetail?.artifacts?.items" 
-            :key="idx"
-            :label="item.title || 'Untitled'"
-            :value="item.remote?.url || item.path || ''"
-            :kind="inferKind(item)"
-            :url="item.remote?.url"
+            v-for="item in displayArtifacts" 
+            :key="item.id"
+            :label="item.title"
+            :value="item.value"
+            :kind="item.kind"
+            :url="item.url"
           />
         </div>
+        <p v-else class="text-[13px] text-text-secondary">暂无工件链接</p>
       </div>
 
     </div>
@@ -122,18 +61,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useTaskStore } from '@/stores/taskStore'
 import ArtifactCard from './ArtifactCard.vue'
 
 const taskStore = useTaskStore()
 const task = computed(() => taskStore.selectedTaskDetail?.task)
 
-const ackNote = ref('')
-
-const hasArtifacts = computed(() => {
-  return taskStore.selectedTaskDetail?.artifacts?.items && taskStore.selectedTaskDetail.artifacts.items.length > 0
-})
+const displayArtifacts = computed(() => taskStore.sessionArtifacts)
 
 const formatTime = (isoString?: string) => {
   if (!isoString) return '-'
@@ -170,43 +105,5 @@ const getStateText = (state: string) => {
     case 'queued': return '排队中'
     default: return state
   }
-}
-
-const inferKind = (item: any): 'document' | 'slides' | 'whiteboard' | 'file' => {
-  if (item.kind) {
-    if (['document', 'slides', 'whiteboard', 'file'].includes(item.kind)) {
-      return item.kind as any
-    }
-  }
-  const url = item.remote?.url || ''
-  const title = item.title || ''
-  
-  if (url.includes('docx') || title.includes('文档') || title.includes('docx')) return 'document'
-  if (url.includes('slides') || title.includes('PPT') || title.includes('幻灯片')) return 'slides'
-  if (url.includes('board') || title.includes('白板')) return 'whiteboard'
-  return 'file'
-}
-
-// Actions
-const handleInterrupt = async () => {
-  if (!task.value) return
-  await taskStore.interruptTask(task.value.task_id)
-  await taskStore.fetchTasks()
-  await taskStore.fetchTaskDetail(task.value.task_id)
-}
-
-const handleAck = async () => {
-  if (!task.value) return
-  await taskStore.ackTask(task.value.task_id, ackNote.value)
-  ackNote.value = ''
-  await taskStore.fetchTasks()
-  await taskStore.fetchTaskDetail(task.value.task_id)
-}
-
-const handleRetry = async () => {
-  if (!task.value) return
-  await taskStore.retryTask(task.value.task_id)
-  await taskStore.fetchTasks()
-  await taskStore.fetchTaskDetail(task.value.task_id)
 }
 </script>

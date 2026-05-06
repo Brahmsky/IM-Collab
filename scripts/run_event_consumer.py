@@ -65,11 +65,11 @@ def main() -> int:
     parser.add_argument("--poll-interval", type=float, default=1.0)
     parser.add_argument("--once", action="store_true", help="Process current event files once and exit.")
     parser.add_argument("--execute", action="store_true", help="Run full delivery and send real Feishu replies.")
-    parser.add_argument("--dispatch", choices=("local", "golembot"), default="local")
+    parser.add_argument("--dispatch", choices=("local", "golembot"), default="golembot")
     parser.add_argument("--golembot-url", default="http://127.0.0.1:3199")
     parser.add_argument("--golembot-token", default="local-golembot-spike")
     parser.add_argument("--publish", action="store_true", help="Ask GolemBot task runner to publish real Feishu artifacts.")
-    parser.add_argument("--generator", choices=("codex", "local", "app-server"), default="app-server")
+    parser.add_argument("--generator", choices=("codex", "app-server"), default="app-server")
     parser.add_argument(
         "--context-fixture",
         type=Path,

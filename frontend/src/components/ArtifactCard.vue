@@ -48,11 +48,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { DisplayArtifactKind } from '@/types/task'
 
 const props = defineProps<{
   label: string
   value?: string
-  kind: 'document' | 'slides' | 'whiteboard' | 'file'
+  kind: DisplayArtifactKind
   url?: string
 }>()
 
@@ -61,6 +62,7 @@ const iconName = computed(() => {
     case 'document': return 'description'
     case 'slides': return 'co_present'
     case 'whiteboard': return 'dashboard'
+    case 'sheet': return 'table'
     case 'file': return 'article'
     default: return 'article'
   }
@@ -71,6 +73,7 @@ const kindLabel = computed(() => {
     case 'document': return 'DOCX'
     case 'slides': return 'PPTX'
     case 'whiteboard': return 'BOARD'
+    case 'sheet': return 'SHEET'
     case 'file': return 'FILE'
     default: return 'FILE'
   }
@@ -81,6 +84,7 @@ const borderClass = computed(() => {
     case 'document': return 'border-blue-400'
     case 'slides': return 'border-orange-400'
     case 'whiteboard': return 'border-purple-400'
+    case 'sheet': return 'border-green-400'
     case 'file': return 'border-gray-400'
     default: return 'border-gray-400'
   }
@@ -91,6 +95,7 @@ const textClass = computed(() => {
     case 'document': return 'text-blue-600'
     case 'slides': return 'text-orange-600'
     case 'whiteboard': return 'text-purple-600'
+    case 'sheet': return 'text-green-600'
     case 'file': return 'text-gray-600'
     default: return 'text-gray-600'
   }

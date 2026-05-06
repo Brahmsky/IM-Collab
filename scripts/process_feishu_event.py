@@ -12,7 +12,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from bridge.feishu_events import create_task_from_event, parse_im_event
 from bridge.feishu_delivery import deliver_task_to_feishu
 from bridge.lark_im import reply_to_message
-from bridge.local_codex_smoke import run_local_smoke
 from bridge.codex_task_runner import run_codex_task
 from bridge.task_protocol import read_artifacts, write_status
 from bridge.task_binding import bind_active_task, build_golembot_session_key, clear_active_task
@@ -83,9 +82,6 @@ def _generate_task_artifacts(
     generator: str,
     codex_generator: Callable[[Path], None] | None = None,
 ) -> None:
-    if generator == "local":
-        run_local_smoke(task_dir)
-        return
     if generator == "codex":
         if codex_generator:
             try:
@@ -121,12 +117,7 @@ def main() -> int:
     parser.add_argument("--tasks-root", type=Path, default=PROJECT_ROOT / "tasks")
     parser.add_argument("--execute-reply", action="store_true", help="Send the real Feishu reply. Defaults to dry-run.")
     parser.add_argument("--run-delivery", action="store_true", help="Generate and publish office artifacts before replying.")
-    parser.add_argument(
-        "--generator",
-        choices=("local", "codex"),
-        default="codex",
-        help="Artifact generator to use before delivery.",
-    )
+    parser.add_argument("--generator", choices=("codex",), default="codex", help="Artifact generator to use before delivery.")
     args = parser.parse_args()
 
     result = process_event_file(

@@ -15,7 +15,6 @@ from bridge.group_briefing import render_confirmation_markdown, render_group_bri
 from bridge.group_briefing_extractors.langextract_deepseek import DEFAULT_BASE_URL, DEFAULT_MODEL_ID, extract_evidence
 from bridge.group_context_selector import select_briefing_context
 from bridge.lark_im import build_delivery_markdown
-from bridge.local_codex_smoke import run_local_smoke
 from bridge.task_binding import bind_active_task, clear_active_task, get_task_binding
 from bridge.task_control import read_control_commands
 from bridge.task_protocol import create_task, read_artifacts, write_status
@@ -173,9 +172,6 @@ def _generate_artifacts(
     codex_thread_id: str | None = None,
     on_turn_started: Any | None = None,
 ) -> Any | None:
-    if generator == "local":
-        run_local_smoke(task_dir)
-        return None
     if generator == "codex":
         run_codex_task(task_dir, project_root=Path(__file__).resolve().parents[1])
         return None

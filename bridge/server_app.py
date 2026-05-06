@@ -8,6 +8,7 @@ from typing import Any, Callable
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 
+from bridge.artifacts import artifact_items, remote_label
 from bridge.chat_messages import read_chat_messages
 from bridge.task_console_web import handle_console_action, handle_console_action_result, make_codex_app_server_retry
 from bridge.task_control import read_control_commands
@@ -63,6 +64,8 @@ def create_app(
                 "chat_messages": read_chat_messages(task_dir),
                 "control_commands": controls,
                 "artifacts": read_artifacts(task_dir),
+                "current_turn_artifacts": _current_turn_artifacts(task_dir),
+                "session_artifacts": _session_artifacts(tasks_root, selected),
                 "pending_controls": _has_pending_controls(task_dir, controls),
             }
         )
@@ -156,10 +159,16 @@ def create_app(
 
     @app.get("/api/tasks/<task_id>/stream")
     def stream_task(task_id: str) -> Response:
-        payload = _task_stream_payload(tasks_root, task_id.strip())
+        tid = task_id.strip()
 
         def generate() -> Any:
-            yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            import time as _time
+            for _ in range(120):
+                payload = _task_stream_payload(tasks_root, tid)
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                if payload.get("done"):
+                    return
+                _time.sleep(1)
 
         response = Response(generate(), content_type="text/event-stream; charset=utf-8")
         response.headers["Cache-Control"] = "no-cache"
@@ -228,6 +237,7 @@ def _task_stream_payload(tasks_root: Path, task_id: str) -> dict[str, Any]:
             "pending_controls": False,
             "stream_texts": [],
             "artifacts": None,
+            "current_turn_artifacts": [],
             "error": "task not found",
         }
     task_dir = selected.path
@@ -252,6 +262,7 @@ def _task_stream_payload(tasks_root: Path, task_id: str) -> dict[str, Any]:
         "pending_controls": pending_controls,
         "stream_texts": [str(message.get("text") or "") for message in messages if str(message.get("text") or "").strip()],
         "artifacts": artifacts,
+        "current_turn_artifacts": _current_turn_artifacts(task_dir),
         "error": error,
     }
 
@@ -271,6 +282,118 @@ def _has_pending_controls(task_dir: Path, controls: list[dict[str, Any]] | None 
         if command_time is None or command_time > status_time:
             return True
     return False
+
+
+def _current_turn_artifacts(task_dir: Path) -> list[dict[str, Any]]:
+    try:
+        artifacts = read_artifacts(task_dir)
+    except ProtocolError:
+        return []
+    return _prioritize_clickable([
+        _artifact_payload({**item, "source_task_id": task_dir.name})
+        for item in artifact_items(artifacts)
+        if _include_artifact(item)
+    ])
+
+
+def _session_artifacts(tasks_root: Path, selected: TaskSummary) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for task in build_task_index(tasks_root):
+        if task.session_key != selected.session_key:
+            continue
+        try:
+            artifacts = read_artifacts(task.path)
+        except ProtocolError:
+            continue
+        for item in artifact_items(artifacts):
+            if not _include_artifact(item):
+                continue
+            key = (_artifact_kind(item), _artifact_url(item) or remote_label(item) or str(item.get("path") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(_artifact_payload({**item, "source_task_id": task.task_id}))
+    return _prioritize_clickable(out)
+
+
+def _include_artifact(item: dict[str, Any]) -> bool:
+    values = {
+        str(item.get("kind") or "").lower(),
+        str(item.get("type") or "").lower(),
+        str(item.get("id") or "").lower(),
+    }
+    if values & {"document", "docx", "slides", "presentation", "ppt", "pptx", "whiteboard", "board", "diagram", "mermaid"}:
+        return True
+    remote = item.get("remote")
+    if not isinstance(remote, dict):
+        return False
+    return any(remote.get(field) for field in ("document_id", "xml_presentation_id", "whiteboard_token"))
+
+
+def _artifact_payload(item: dict[str, Any]) -> dict[str, Any]:
+    url = _artifact_url(item)
+    return {
+        "id": str(item.get("id") or item.get("kind") or ""),
+        "kind": _artifact_kind(item),
+        "title": _artifact_title(item),
+        "label": _artifact_title(item),
+        "path": str(item.get("path") or "") or None,
+        "remote": item.get("remote") if isinstance(item.get("remote"), dict) else None,
+        "url": url,
+        "clickable": bool(url),
+        "source_task_id": _artifact_source_task_id(item),
+    }
+
+
+def _artifact_url(item: dict[str, Any]) -> str | None:
+    remote = item.get("remote") if isinstance(item.get("remote"), dict) else {}
+    if isinstance(remote, dict):
+        for field in ("url", "web_url", "permalink"):
+            value = remote.get(field)
+            if value:
+                return str(value)
+    return None
+
+
+def _artifact_kind(item: dict[str, Any]) -> str:
+    raw = str(item.get("kind") or item.get("id") or "").lower()
+    if raw in {"presentation", "ppt", "pptx"}:
+        return "slides"
+    if raw in {"diagram", "mermaid", "board"}:
+        return "whiteboard"
+    if raw == "docx":
+        return "document"
+    return raw or "artifact"
+
+
+def _artifact_title(item: dict[str, Any]) -> str:
+    title = str(item.get("title") or "").strip()
+    if title:
+        return title
+    remote = item.get("remote")
+    if isinstance(remote, dict):
+        remote_title = str(remote.get("label") or remote.get("title") or remote.get("name") or "").strip()
+        if remote_title:
+            return remote_title
+    return str(item.get("kind") or item.get("id") or "artifact")
+
+
+def _prioritize_clickable(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    clickable = [item for item in items if item.get("clickable") is True]
+    fallback = [item for item in items if item.get("clickable") is not True]
+    return clickable + fallback
+
+
+def _artifact_source_task_id(item: dict[str, Any]) -> str | None:
+    source_task_id = item.get("source_task_id")
+    if isinstance(source_task_id, str) and source_task_id.strip():
+        return source_task_id
+    path = str(item.get("path") or "").strip()
+    parts = Path(path).parts
+    if len(parts) >= 2 and parts[0] == "tasks":
+        return parts[1]
+    return None
 
 
 def _parse_iso_datetime(raw: str) -> datetime | None:

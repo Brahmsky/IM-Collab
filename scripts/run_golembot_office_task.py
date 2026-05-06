@@ -19,7 +19,7 @@ def main() -> int:
     parser.add_argument("--sender-id", required=True)
     parser.add_argument("--tasks-root", type=Path, default=PROJECT_ROOT / "tasks")
     parser.add_argument("--task-id")
-    parser.add_argument("--generator", choices=("local", "codex", "app-server"), default="local")
+    parser.add_argument("--generator", choices=("codex", "app-server"), default="app-server")
     parser.add_argument("--publish", action="store_true", help="Publish artifacts to Feishu office surfaces.")
     parser.add_argument("--brief-extractor", choices=("rules", "langextract-deepseek"), default="langextract-deepseek")
     parser.add_argument("--brief-api-key-env", default="DEEPSEEK_API_KEY")

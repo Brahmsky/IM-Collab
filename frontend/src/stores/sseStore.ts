@@ -19,41 +19,31 @@ export const useSseStore = defineStore('sse', () => {
   const isStreaming = computed(() => streamState.value === 'streaming')
 
   function connectStream(taskId: string) {
-    if (activeStream.value) {
-      disconnectStream()
-    }
-    
+    disconnectStream()
     streamState.value = 'connecting'
     streamTexts.value = []
     latestPayload.value = null
 
     const es = connectTaskStream(taskId, {
       onEvent: (payload) => {
-        streamState.value = 'streaming'
-        latestPayload.value = payload
-        
-        if (payload.stream_texts && payload.stream_texts.length > 0) {
-          streamTexts.value = payload.stream_texts
+        if (streamState.value !== 'done') {
+          streamState.value = 'streaming'
         }
-
-        if (taskStore.selectedTaskDetail) {
-          taskStore.selectedTaskDetail.task.state = payload.state
-          if (payload.artifacts) {
-            taskStore.selectedTaskDetail.artifacts = payload.artifacts
-          }
-          taskStore.selectedTaskDetail.pending_controls = payload.pending_controls
+        latestPayload.value = payload
+        if (payload.stream_texts?.length) {
+          streamTexts.value = [...payload.stream_texts]
         }
       },
       onDone: () => {
         streamState.value = 'done'
-        if (streamTexts.value.length > 0) {
-          chatStore.addAssistantMessage(streamTexts.value.join(''))
-        }
-        taskStore.fetchTaskDetail(taskId)
+        taskStore.fetchTaskDetail(taskId).then(() => {
+          taskStore.fetchTasks()
+          chatStore.syncFromTaskDetail()
+        })
       },
-      onError: (err) => {
-        console.error('SSE Error:', err)
+      onError: () => {
         streamState.value = 'done'
+        taskStore.fetchTasks()
       }
     })
 

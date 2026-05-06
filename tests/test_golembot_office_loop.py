@@ -22,6 +22,21 @@ def _fake_evidence(messages, **kwargs):
     ]
 
 
+class _WriteOutputsAppServerBackend:
+    def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+        write_codex_outputs(task_dir)
+        return CodexTurn(thread_id=thread_id or "thread_test", turn_id="turn_test")
+
+    def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+        return {"id": turn_id, "status": "completed"}
+
+    def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict:
+        return {}
+
+    def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
+        return {}
+
+
 def test_run_golembot_office_task_creates_task_and_returns_reply(tmp_path: Path) -> None:
     result = run_golembot_office_task(
         message="根据群聊生成项目方案、PPT 和白板",
@@ -30,8 +45,9 @@ def test_run_golembot_office_task_creates_task_and_returns_reply(tmp_path: Path)
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="gb-test-task",
-        generator="local",
+        generator="app-server",
         publish=False,
+        codex_backend=_WriteOutputsAppServerBackend(),
     )
 
     task_dir = tmp_path / "gb-test-task"
@@ -51,8 +67,9 @@ def test_run_golembot_office_task_writes_group_context_to_request(tmp_path: Path
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="group-task",
-        generator="local",
+        generator="app-server",
         publish=False,
+        codex_backend=_WriteOutputsAppServerBackend(),
         conversation_context=[
             {"message_id": "om_1", "sender_id": "ou_a", "content": "我们主打飞书群聊入口。"},
             {"message_id": "om_2", "sender_id": "ou_b", "content": "PPT 要突出多端协同。"},
@@ -74,8 +91,9 @@ def test_run_golembot_office_task_persists_last_absorbed_group_message_boundary(
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="group-boundary-task",
-        generator="local",
+        generator="app-server",
         publish=False,
+        codex_backend=_WriteOutputsAppServerBackend(),
         conversation_context=[
             {"message_id": "om_1", "sender_id": "ou_a", "content": "我们主打飞书群聊入口。"},
             {"message_id": "om_2", "sender_id": "ou_b", "content": "PPT 要突出多端协同。"},
@@ -96,8 +114,9 @@ def test_run_golembot_office_task_writes_source_grounded_group_brief(tmp_path: P
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="brief-task",
-        generator="local",
+        generator="app-server",
         publish=False,
+        codex_backend=_WriteOutputsAppServerBackend(),
         conversation_context=[
             {
                 "message_id": "om_1",
@@ -146,8 +165,9 @@ def test_run_golembot_office_task_can_use_selected_langextract_brief_backend(tmp
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="langextract-brief-task",
-        generator="local",
+        generator="app-server",
         publish=False,
+        codex_backend=_WriteOutputsAppServerBackend(),
         conversation_context=[
             {"message_id": "om_noise", "sender_id": "ou_a", "content": "闲聊"},
             {"message_id": "om_formal", "sender_id": "teacher", "content": "正式通知：4 月 28 日 20:00 截止。", "tags": ["formal_notice", "deadline"]},
@@ -250,9 +270,10 @@ def test_run_golembot_office_task_can_publish_without_im_reply(tmp_path: Path) -
         sender_id="ou_456",
         tasks_root=tmp_path,
         task_id="gb-publish-task",
-        generator="local",
+        generator="app-server",
         publish=True,
         runner=fake_run,
+        codex_backend=_WriteOutputsAppServerBackend(),
     )
 
     artifacts = read_artifacts(tmp_path / "gb-publish-task")
@@ -574,8 +595,9 @@ def test_resumed_waiting_task_includes_natural_language_controls_in_request(tmp_
         sender_id="ou_requester",
         tasks_root=tmp_path,
         task_id="waiting-task",
-        generator="local",
+        generator="app-server",
         publish=False,
+        codex_backend=_WriteOutputsAppServerBackend(),
     )
 
     request = (task_dir / "request.md").read_text(encoding="utf-8")

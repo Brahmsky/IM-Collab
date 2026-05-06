@@ -75,7 +75,13 @@ def remote_url(item: dict[str, Any]) -> str:
 def remote_label(item: dict[str, Any]) -> str:
     remote = item.get("remote")
     if isinstance(remote, dict):
-        for field in ("url", "web_url", "permalink", "whiteboard_token", "token", "id"):
+        for field in ("url", "web_url", "permalink"):
+            if remote.get(field):
+                return str(remote[field])
+        for field in ("label", "title", "name"):
+            if remote.get(field):
+                return str(remote[field])
+        for field in ("whiteboard_token", "token", "id"):
             if remote.get(field):
                 return str(remote[field])
     path = item.get("path")

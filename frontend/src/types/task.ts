@@ -36,18 +36,24 @@ export interface ControlCommand {
   payload: Record<string, unknown>;
 }
 
+export interface ArtifactRemote {
+  provider: string;
+  url?: string;
+  web_url?: string;
+  permalink?: string;
+  document_id?: string;
+  xml_presentation_id?: string;
+  whiteboard_token?: string;
+  token?: string;
+  id?: string;
+}
+
 export interface ArtifactItem {
   id: string;
   kind: string;
   title?: string;
   path?: string;
-  remote?: {
-    provider: string;
-    url?: string;
-    document_id?: string;
-    xml_presentation_id?: string;
-    whiteboard_token?: string;
-  };
+  remote?: ArtifactRemote;
 }
 
 export interface Artifacts {
@@ -57,11 +63,23 @@ export interface Artifacts {
   items: ArtifactItem[];
 }
 
+export type DisplayArtifactKind = 'document' | 'slides' | 'whiteboard' | 'sheet' | 'file';
+
+export interface DisplayArtifact {
+  id: string;
+  title: string;
+  kind: DisplayArtifactKind;
+  url?: string;
+  value?: string;
+}
+
 export interface TaskDetailResponse {
   task: TaskSummary;
   chat_messages: ChatMessage[];
   control_commands: ControlCommand[];
   artifacts: Artifacts;
+  current_turn_artifacts: ArtifactItem[];
+  session_artifacts: ArtifactItem[];
   pending_controls: boolean;
 }
 
@@ -69,6 +87,7 @@ export interface AppendResponse {
   ok: true;
   task_id: string;
   stream_url: string;
+  backend?: string;
 }
 
 export interface ActionResponse {
@@ -89,5 +108,6 @@ export interface SSEPayload {
   pending_controls: boolean;
   stream_texts: string[];
   artifacts: Artifacts | null;
+  current_turn_artifacts: ArtifactItem[];
   error: string | null;
 }

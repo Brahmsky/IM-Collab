@@ -1,103 +1,60 @@
-import { ref, computed, watch } from 'vue'
+import { computed } from 'vue'
 import { useTaskStore } from '@/stores/taskStore'
 import { useSseStore } from '@/stores/sseStore'
-import { useChatStore } from '@/stores/chatStore'
 
 export type StateType = 'idle' | 'sending' | 'streaming' | 'completed' | 'failed' | 'waiting' | 'pending_reply'
 
 export function useStateMachine() {
   const taskStore = useTaskStore()
   const sseStore = useSseStore()
-  const chatStore = useChatStore()
-  
-  const currentState = ref<StateType>('idle')
 
-  const isTerminal = computed(() => {
-    return ['completed', 'failed', 'waiting', 'pending_reply'].includes(currentState.value)
+  const currentState = computed<StateType>(() => {
+    const task = taskStore.selectedTask
+    if (!task) return 'idle'
+
+    if (sseStore.isStreaming) return 'streaming'
+    if (sseStore.streamState === 'connecting') return 'sending'
+
+    if (taskStore.pendingControls) return 'pending_reply'
+
+    switch (task.state) {
+      case 'completed': return 'completed'
+      case 'failed': return 'failed'
+      case 'waiting_for_user': return 'waiting'
+      case 'running': return 'streaming'
+      case 'queued': return 'idle'
+      default: return 'idle'
+    }
   })
+
+  const isTerminal = computed(() =>
+    ['completed', 'failed', 'waiting', 'pending_reply'].includes(currentState.value)
+  )
 
   const statusLabel = computed(() => {
     switch (currentState.value) {
       case 'idle': return '就绪'
       case 'sending': return '发送中...'
-      case 'streaming': return '执行中...'
+      case 'streaming': return '执行中'
       case 'completed': return '已完成'
       case 'failed': return '失败'
       case 'waiting': return '等待确认'
-      case 'pending_reply': return '有新消息'
-      default: return '未知'
+      case 'pending_reply': return '待回复'
+      default: return currentState.value
     }
   })
 
   const statusBadge = computed(() => {
     switch (currentState.value) {
-      case 'idle': return 'bg-gray-100 text-gray-800'
-      case 'sending': return 'bg-blue-100 text-blue-800 animate-pulse'
-      case 'streaming': return 'bg-blue-100 text-blue-800 animate-pulse'
-      case 'completed': return 'bg-green-100 text-green-800'
-      case 'failed': return 'bg-red-100 text-red-800'
-      case 'waiting': return 'bg-yellow-100 text-yellow-800'
-      case 'pending_reply': return 'bg-purple-100 text-purple-800'
-      default: return 'bg-gray-100 text-gray-800'
+      case 'sending':
+      case 'streaming': return 'bg-tag-bg-blue text-primary'
+      case 'completed': return 'bg-[#E8F8F2] text-success'
+      case 'failed': return 'bg-[#FFECE8] text-error'
+      case 'waiting': return 'bg-[#FFF2E5] text-warning'
+      case 'pending_reply': return 'bg-tag-bg-gray text-text-secondary'
+      default: return 'bg-tag-bg-gray text-text-secondary'
     }
   })
 
-  function transition(newState: StateType, context?: any) {
-    currentState.value = newState
-  }
-
-  watch(() => taskStore.selectedTaskDetail, (detail) => {
-    if (!detail) {
-      transition('idle')
-      return
-    }
-
-    if (sseStore.isStreaming) {
-      transition('streaming')
-      return
-    }
-
-    if (detail.pending_controls) {
-      transition('pending_reply')
-      return
-    }
-
-    switch (detail.task.state) {
-      case 'completed':
-        transition('completed')
-        break
-      case 'failed':
-        transition('failed')
-        break
-      case 'waiting_for_user':
-        transition('waiting')
-        break
-      case 'running':
-      case 'queued':
-        transition('streaming')
-        break
-      default:
-        transition('idle')
-    }
-  }, { deep: true, immediate: true })
-
-  watch(() => sseStore.streamState, (state) => {
-    if (state === 'connecting' || state === 'streaming') {
-      transition('streaming')
-    } else if (state === 'done') {
-      const taskState = taskStore.selectedTaskDetail?.task.state
-      if (taskState === 'completed') transition('completed')
-      else if (taskState === 'failed') transition('failed')
-      else if (taskState === 'waiting_for_user') transition('waiting')
-      else if (taskStore.pendingControls) transition('pending_reply')
-    }
-  })
-
-  return {
-    currentState,
-    transition,
-    isTerminal,
-    statusLabel,
-    statusBadge
-  }
+  return { currentState, isTerminal, statusLabel, statusBadge }
 }

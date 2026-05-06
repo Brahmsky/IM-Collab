@@ -28,6 +28,24 @@ EXPECTED_ARTIFACTS = {
     ],
 }
 
+EXPECTED_CURRENT_TURN_ARTIFACTS = [
+    {
+        "id": "proposal",
+        "kind": "document",
+        "title": "项目方案",
+        "label": "项目方案",
+        "path": None,
+        "remote": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_456",
+            "document_id": "doc_456",
+        },
+        "url": "https://docs.example.com/doc_456",
+        "clickable": True,
+        "source_task_id": TASK_ID,
+    }
+]
+
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,7 +142,16 @@ def test_sse_payload_structure(client: Any) -> None:
     events = _parse_sse_events(response)
     payload = events[0]
 
-    assert set(payload) == {"ok", "done", "state", "pending_controls", "stream_texts", "artifacts", "error"}
+    assert set(payload) == {
+        "ok",
+        "done",
+        "state",
+        "pending_controls",
+        "stream_texts",
+        "artifacts",
+        "current_turn_artifacts",
+        "error",
+    }
     assert payload["ok"] is True
     assert payload["done"] is True
     assert payload["state"] == "completed"
@@ -133,6 +160,7 @@ def test_sse_payload_structure(client: Any) -> None:
     assert payload["stream_texts"]
     assert all(isinstance(text, str) for text in payload["stream_texts"])
     assert payload["artifacts"] == EXPECTED_ARTIFACTS
+    assert payload["current_turn_artifacts"] == EXPECTED_CURRENT_TURN_ARTIFACTS
     assert payload["error"] is None
 
 
@@ -157,6 +185,7 @@ def test_sse_task_not_found(client: Any) -> None:
             "pending_controls": False,
             "stream_texts": [],
             "artifacts": None,
+            "current_turn_artifacts": [],
             "error": "task not found",
         }
     ]

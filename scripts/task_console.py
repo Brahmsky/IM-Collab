@@ -83,7 +83,7 @@ def main() -> int:
 
     retry_parser = subparsers.add_parser("retry", help="Retry a GolemBot office task from request.md.")
     retry_parser.add_argument("task_id")
-    retry_parser.add_argument("--generator", choices=("local", "codex", "app-server"), default="app-server")
+    retry_parser.add_argument("--generator", choices=("codex", "app-server"), default="app-server")
     retry_parser.add_argument("--publish", action="store_true")
     args = parser.parse_args()
 

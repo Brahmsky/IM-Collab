@@ -30,7 +30,7 @@ def test_build_task_index_sorts_by_updated_at_and_extracts_remote_links(tmp_path
                 "items": [
                     {"id": "brief", "kind": "brief", "remote": {"url": "https://example/doc-old"}},
                     {"id": "deck", "kind": "deck", "remote": {"url": "https://example/slides-old"}},
-                    {"id": "board", "kind": "board", "remote": {"whiteboard_token": "wb-old"}},
+                    {"id": "board", "kind": "board", "remote": {"label": "历史白板", "whiteboard_token": "wb-old"}},
                 ],
                 "summary": "old summary",
                 "next_steps": [],
@@ -53,7 +53,7 @@ def test_build_task_index_sorts_by_updated_at_and_extracts_remote_links(tmp_path
                 "items": [
                     {"id": "brief", "kind": "brief", "remote": {"url": "https://example/doc-new"}},
                     {"id": "deck", "kind": "deck", "remote": {"url": "https://example/slides-new"}},
-                    {"id": "board", "kind": "board", "remote": {"whiteboard_token": "wb-new"}},
+                    {"id": "board", "kind": "board", "remote": {"url": "https://example/board-new", "whiteboard_token": "wb-new"}},
                 ],
                 "summary": "new summary",
                 "next_steps": [],
@@ -65,8 +65,42 @@ def test_build_task_index_sorts_by_updated_at_and_extracts_remote_links(tmp_path
     assert [task.task_id for task in index] == ["new", "old"]
     assert ("brief", "https://example/doc-new") in index[0].artifact_outputs
     assert ("deck", "https://example/slides-new") in index[0].artifact_outputs
-    assert ("board", "wb-new") in index[0].artifact_outputs
+    assert ("board", "https://example/board-new") in index[0].artifact_outputs
     assert index[0].summary == "new summary"
+
+
+def test_build_task_index_uses_whiteboard_label_when_click_url_missing(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    write_json(
+        tasks_root / "label-only-board" / "status.json",
+        {
+            "task_id": "label-only-board",
+            "state": "completed",
+            "created_at": "2026-04-28T03:00:00+00:00",
+            "updated_at": "2026-04-28T03:00:00+00:00",
+            "error": None,
+        },
+    )
+    write_json(
+        tasks_root / "label-only-board" / "artifacts.json",
+        {
+            "task_id": "label-only-board",
+            "items": [
+                {
+                    "id": "board",
+                    "kind": "whiteboard",
+                    "title": "流程白板",
+                    "remote": {"label": "可继续编辑的白板", "whiteboard_token": "wb-123"},
+                }
+            ],
+            "summary": "label summary",
+            "next_steps": [],
+        },
+    )
+
+    [task] = build_task_index(tasks_root)
+
+    assert task.artifact_outputs == (("流程白板", "可继续编辑的白板"),)
 
 
 def test_build_task_index_includes_failed_task_error(tmp_path: Path) -> None:
