@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from bridge.artifacts import artifact_baseline_snapshot
 from bridge.feishu_events import is_card_action_event, parse_card_action_event, parse_im_event
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
 from bridge.golembot_forwarder import forward_event_to_golembot
@@ -134,46 +135,68 @@ def dispatch_event_via_golembot(
                     replier=replier,
                 )
             raise
-        task_result = office_runner(
-            message=new_command.instruction if new_command is not None else parsed.text,
-            session_key=session_key,
-            chat_id=parsed.chat_id,
-            sender_id=parsed.sender_open_id,
-            chat_name=chat_name,
-            tasks_root=tasks_root,
-            task_id=task_id,
-            generator=generator,
-            publish=False,
-            conversation_context=conversation_context,
-            brief_extractor="langextract-deepseek" if parsed.chat_type in {"group", "channel"} else "rules",
-            absorbed_message_id=parsed.message_id if parsed.chat_type in {"group", "channel"} else None,
-        )
+        task_result = None
         publish_result = None
-        if task_result.get("state") == "waiting_for_user":
-            reply_markdown = str(task_result.get("reply_markdown") or "我已完成群聊信息汇总，但需要你确认后再继续。")
-            card_name = "confirmation_card.json"
-        else:
-            publish_result = publisher(Path(str(task_result["task_dir"])))
-            reply_markdown = build_delivery_markdown(publish_result["artifacts"])
-            card_name = "delivery_card.json"
-        reply = _reply_with_optional_card(
-            parsed.message_id,
-            reply_markdown,
-            f"{parsed.message_id}-golembot-forwarded",
-            not execute_reply,
-            task_dir=Path(str(task_result["task_dir"])),
-            card_name=card_name,
-            replier=replier,
-            card_replier=card_replier,
-        )
-        return {
-            "session_key": session_key,
-            "message_id": parsed.message_id,
-            "task": task_result,
-            "publish": publish_result,
-            "reply_markdown": reply_markdown,
-            "reply": reply,
-        }
+        try:
+            task_result = office_runner(
+                message=new_command.instruction if new_command is not None else parsed.text,
+                session_key=session_key,
+                chat_id=parsed.chat_id,
+                sender_id=parsed.sender_open_id,
+                chat_name=chat_name,
+                tasks_root=tasks_root,
+                task_id=task_id,
+                generator=generator,
+                publish=False,
+                conversation_context=conversation_context,
+                brief_extractor="langextract-deepseek" if parsed.chat_type in {"group", "channel"} else "rules",
+                absorbed_message_id=parsed.message_id if parsed.chat_type in {"group", "channel"} else None,
+            )
+            if task_result.get("state") == "waiting_for_user":
+                reply_markdown = str(task_result.get("reply_markdown") or "我已完成群聊信息汇总，但需要你确认后再继续。")
+                card_name = "confirmation_card.json"
+            else:
+                publish_result = publisher(Path(str(task_result["task_dir"])))
+                reply_markdown = build_delivery_markdown(publish_result["artifacts"])
+                card_name = "delivery_card.json"
+            reply = _reply_with_optional_card(
+                parsed.message_id,
+                reply_markdown,
+                f"{parsed.message_id}-golembot-forwarded",
+                not execute_reply,
+                task_dir=Path(str(task_result["task_dir"])),
+                card_name=card_name,
+                replier=replier,
+                card_replier=card_replier,
+            )
+            return {
+                "session_key": session_key,
+                "message_id": parsed.message_id,
+                "task": task_result,
+                "publish": publish_result,
+                "reply_markdown": reply_markdown,
+                "reply": reply,
+            }
+        except Exception as exc:
+            task_dir = tasks_root / task_id
+            error_markdown = _group_delivery_failure_markdown(exc)
+            reply = replier(
+                parsed.message_id,
+                error_markdown,
+                f"{parsed.message_id}-golembot-failed",
+                not execute_reply,
+            )
+            return {
+                "session_key": session_key,
+                "message_id": parsed.message_id,
+                "task": task_result,
+                "publish": publish_result,
+                "task_id": task_id,
+                "task_dir": task_dir.as_posix(),
+                "reply_markdown": error_markdown,
+                "reply": reply,
+                "error": str(exc),
+            }
 
     forwarded = forwarder(payload, gateway_url, token, publish=False, generator=generator)
     response = forwarded.get("response", {})
@@ -340,6 +363,15 @@ message_type: {parsed.message_type}
 """
 
 
+def _group_delivery_failure_markdown(error: Exception) -> str:
+    text = str(error).strip()
+    return (
+        "任务执行失败，未能形成可回传的飞书远端交付物。"
+        f"\n\n错误: `{text}`"
+        "\n\n请根据错误修正后重新触发任务。"
+    )
+
+
 def _is_group_context_permission_error(error: Exception) -> bool:
     text = str(error)
     return "Permission denied" in text or "need_user_authorization" in text or "230027" in text
@@ -488,6 +520,7 @@ def _append_to_active_turn_if_available(
         "sender_id": parsed.sender_open_id,
         "codex_thread_id": codex_thread_id,
         "active_turn_id": active_turn_id,
+        "artifact_baseline": _artifact_baseline_for_task(tasks_root / str(task_id)),
     }
     _attach_group_delta_payload(
         payload,
@@ -532,6 +565,7 @@ def _append_to_waiting_task_if_available(
         "session_key": session_key,
         "chat_id": parsed.chat_id,
         "sender_id": parsed.sender_open_id,
+        "artifact_baseline": _artifact_baseline_for_task(task_dir),
     }
     _attach_group_delta_payload(
         payload,
@@ -554,6 +588,19 @@ def _append_to_waiting_task_if_available(
 def _task_id(message_id: str) -> str:
     safe = "".join(char if char.isalnum() or char in "_.-" else "-" for char in message_id)
     return f"im-{safe}"
+
+
+def _artifact_baseline_for_task(task_dir: Path) -> list[dict[str, str]]:
+    try:
+        artifacts_path = task_dir / "artifacts.json"
+        if not artifacts_path.is_file():
+            return []
+        import json
+        from bridge.task_protocol import read_artifacts
+
+        return artifact_baseline_snapshot(read_artifacts(task_dir))
+    except Exception:
+        return []
 
 
 def _conversation_context(parsed: Any, context_reader: ContextReader, new_command: Any | None = None) -> list[dict[str, Any]]:

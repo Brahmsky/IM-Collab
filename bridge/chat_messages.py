@@ -116,5 +116,12 @@ def _task_request_message(task_dir: Path) -> str:
     raw = path.read_text(encoding="utf-8")
     marker = "## User Message"
     if marker in raw:
-        return raw.split(marker, 1)[1].strip()
+        section = raw.split(marker, 1)[1]
+        lines: list[str] = []
+        for line in section.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                break
+            lines.append(line)
+        return "\n".join(lines).strip()
     return raw.strip()

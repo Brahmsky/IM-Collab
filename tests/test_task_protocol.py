@@ -86,6 +86,40 @@ def test_write_and_read_artifacts(tmp_path: Path) -> None:
     assert raw["summary"] == "Generated local office artifacts."
 
 
+def test_write_and_read_artifacts_accepts_structured_input_output_schema(tmp_path: Path) -> None:
+    task_dir = create_task(tmp_path, "demo-task", "hello")
+    artifacts = {
+        "task_id": "demo-task",
+        "items": [
+            {
+                "id": "brief",
+                "kind": "document",
+                "family": "document",
+                "input": {"format": "docx_xml", "path": "tasks/demo-task/brief.xml"},
+                "output": {
+                    "provider": "feishu",
+                    "object_type": "document",
+                    "document_id": "doc_123",
+                    "url": "https://docs.example.com/doc_123",
+                },
+                "display": {
+                    "card_kind": "document",
+                    "label": "项目方案",
+                    "click_url": "https://docs.example.com/doc_123",
+                    "preview_value": "https://docs.example.com/doc_123",
+                    "clickable": True,
+                },
+            }
+        ],
+        "summary": "Generated structured office artifacts.",
+        "next_steps": [],
+    }
+
+    write_artifacts(task_dir, artifacts)
+
+    assert read_artifacts(task_dir) == artifacts
+
+
 def test_read_artifacts_rejects_string_artifact_paths(tmp_path: Path) -> None:
     task_dir = create_task(tmp_path, "demo-task", "hello")
     (task_dir / "artifacts.json").write_text(

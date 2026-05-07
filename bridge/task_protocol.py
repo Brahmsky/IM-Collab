@@ -39,7 +39,7 @@ def read_status(task_dir: Path) -> dict[str, Any]:
     return status
 
 
-def write_status(task_dir: Path, state: str, error: str | None = None) -> dict[str, Any]:
+def write_status(task_dir: Path, state: str, error: str | None = None, **extra: Any) -> dict[str, Any]:
     if state not in VALID_STATES:
         raise ProtocolError(f"invalid state: {state}")
 
@@ -50,6 +50,7 @@ def write_status(task_dir: Path, state: str, error: str | None = None) -> dict[s
         "created_at": current["created_at"],
         "updated_at": _now(),
         "error": error,
+        **extra,
     }
     _write_json(task_dir / "status.json", updated)
     return updated
@@ -81,7 +82,10 @@ def _validate_artifacts(artifacts: dict[str, Any]) -> None:
             if not item.get("id") and not item.get("kind"):
                 raise ProtocolError(f"artifact item {index} must have id or kind")
             if not item.get("path") and not item.get("remote"):
-                raise ProtocolError(f"artifact item {index} must have path or remote")
+                artifact_input = item.get("input")
+                artifact_output = item.get("output")
+                if not isinstance(artifact_input, dict) and not isinstance(artifact_output, dict):
+                    raise ProtocolError(f"artifact item {index} must have path, remote, input, or output")
         return
     deliverable_keys = [
         key

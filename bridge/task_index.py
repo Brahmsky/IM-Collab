@@ -75,7 +75,7 @@ def _read_task_summary(task_dir: Path, bindings: dict[str, dict[str, Any]]) -> T
         summary=str(artifacts.get("summary") or ""),
         artifact_outputs=tuple(_artifact_outputs(artifacts)),
         session_key=str(binding.get("session_key") or ""),
-        session_title=str(binding.get("session_title") or ""),
+        session_title=str(binding.get("session_title") or _request_message_preview(task_dir)),
         chat_name=str(binding.get("chat_name") or ""),
         chat_id=str(binding.get("chat_id") or ""),
         codex_thread_id=str(binding.get("codex_thread_id") or ""),
@@ -140,3 +140,22 @@ def _ack_value(task_dir: Path, key: str) -> str:
     if not ack_path.exists():
         return ""
     return str(_read_json(ack_path).get(key) or "")
+
+
+def _request_message_preview(task_dir: Path) -> str:
+    request_path = task_dir / "request.md"
+    if not request_path.exists():
+        return ""
+    raw = request_path.read_text(encoding="utf-8")
+    marker = "## User Message"
+    if marker in raw:
+        section = raw.split(marker, 1)[1]
+        lines: list[str] = []
+        for line in section.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                break
+            lines.append(line)
+        raw = "\n".join(lines)
+    line = next((line.strip() for line in raw.splitlines() if line.strip()), "")
+    return line

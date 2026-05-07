@@ -85,6 +85,17 @@ def test_build_update_whiteboard_args_uses_mermaid_stdin() -> None:
     ]
 
 
+def test_build_update_whiteboard_args_supports_other_input_formats() -> None:
+    args = build_update_whiteboard_args(
+        "whiteboard_123",
+        idempotency_token="task-board",
+        input_format="plantuml",
+        dry_run=True,
+    )
+
+    assert args[args.index("--input_format") + 1] == "plantuml"
+
+
 def test_update_whiteboard_from_mermaid_sends_file_content(tmp_path: Path) -> None:
     mermaid = tmp_path / "whiteboard.mmd"
     mermaid.write_text("flowchart TD\nA-->B\n", encoding="utf-8")
@@ -99,6 +110,7 @@ def test_update_whiteboard_from_mermaid_sends_file_content(tmp_path: Path) -> No
         "whiteboard_123",
         mermaid,
         idempotency_token="task-board",
+        input_format="mermaid",
         runner=fake_run,
     )
 
@@ -122,6 +134,7 @@ def test_create_feishu_whiteboard_script_updates_existing_board(tmp_path: Path, 
         idempotency_token: str,
         document_id_or_url: str | None = None,
         whiteboard_token: str | None = None,
+        input_format: str = "mermaid",
         dry_run: bool = False,
         runner=None,
     ) -> dict[str, object]:
@@ -129,10 +142,11 @@ def test_create_feishu_whiteboard_script_updates_existing_board(tmp_path: Path, 
         assert mermaid_path == mermaid
         assert idempotency_token == "task-board"
         assert document_id_or_url is None
+        assert input_format == "mermaid"
         assert dry_run is True
         return {"ok": True, "created_node_id": "t1:2"}
 
-    monkeypatch.setattr(module, "create_or_update_whiteboard_from_mermaid", fake_create_or_update)
+    monkeypatch.setattr(module, "create_or_update_whiteboard_from_source", fake_create_or_update)
     monkeypatch.setattr(
         sys,
         "argv",

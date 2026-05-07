@@ -234,53 +234,72 @@ def test_run_golembot_office_task_waits_for_user_when_external_brief_has_conflic
     assert result["state"] == "waiting_for_user"
 
 
-def test_run_golembot_office_task_can_publish_without_im_reply(tmp_path: Path) -> None:
-    calls: list[list[str]] = []
+def test_run_golembot_office_task_publish_requires_direct_feishu_remote_artifacts(tmp_path: Path) -> None:
+    try:
+        run_golembot_office_task(
+            message="生成项目方案",
+            session_key="feishu:oc_123",
+            chat_id="oc_123",
+            sender_id="ou_456",
+            tasks_root=tmp_path,
+            task_id="gb-publish-task",
+            generator="app-server",
+            publish=True,
+            codex_backend=_WriteOutputsAppServerBackend(),
+        )
+    except Exception as exc:
+        assert "no Feishu remote artifacts found" in str(exc)
+    else:
+        raise AssertionError("expected publish path to reject local-only artifacts")
 
-    def fake_run(args: list[str], input_text: str | None = None) -> str:
-        calls.append(args)
-        command = " ".join(args[:3])
-        if command == "lark-cli docs +create":
-            return json.dumps({"ok": True, "data": {"document": {"document_id": "doc_123", "url": "doc_url"}}})
-        if command == "lark-cli slides +create":
-            return json.dumps(
-                {"ok": True, "data": {"xml_presentation_id": "slides_123", "url": "slides_url", "slides_added": 8}}
-            )
-        if command == "lark-cli docs +update":
-            return json.dumps(
-                {
-                    "ok": True,
-                    "data": {
-                        "document": {
-                            "new_blocks": [
-                                {"block_id": "block_123", "block_token": "whiteboard_123", "block_type": "whiteboard"}
-                            ]
-                        }
+
+def test_run_golembot_office_task_fails_when_publish_requested_but_no_feishu_remote_artifacts_exist(tmp_path: Path) -> None:
+    class FakeAppServerBackend:
+        def start_task(self, task_dir: Path, thread_id: str | None = None) -> CodexTurn:
+            (task_dir / "plan.json").write_text('{"task_id":"gb-publish-fail","steps":[]}\n', encoding="utf-8")
+            (task_dir / "artifacts.json").write_text(
+                json.dumps(
+                    {
+                        "task_id": "gb-publish-fail",
+                        "items": [
+                            {"id": "plan", "kind": "plan", "type": "json", "path": (task_dir / "plan.json").as_posix()}
+                        ],
+                        "summary": "只有本地文件。",
+                        "next_steps": [],
                     },
-                }
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
             )
-        if command == "lark-cli whiteboard +update":
-            return json.dumps({"ok": True, "data": {"created_node_id": "t1:2"}})
-        raise AssertionError(args)
+            return CodexTurn(thread_id=thread_id or "thread_123", turn_id="turn_456")
 
-    result = run_golembot_office_task(
-        message="生成项目方案",
-        session_key="feishu:oc_123",
-        chat_id="oc_123",
-        sender_id="ou_456",
-        tasks_root=tmp_path,
-        task_id="gb-publish-task",
-        generator="app-server",
-        publish=True,
-        runner=fake_run,
-        codex_backend=_WriteOutputsAppServerBackend(),
-    )
+        def wait_for_task(self, thread_id: str, turn_id: str) -> dict:
+            return {"id": turn_id, "status": "completed"}
 
-    artifacts = read_artifacts(tmp_path / "gb-publish-task")
-    items = {item["kind"]: item for item in artifacts["items"]}
-    assert items["document"]["remote"]["url"] == "doc_url"
-    assert "doc_url" in result["reply_markdown"]
-    assert not any(call[:3] == ["lark-cli", "im", "+messages-reply"] for call in calls)
+        def steer_turn(self, thread_id: str, turn_id: str, text: str) -> dict:
+            return {}
+
+        def interrupt_turn(self, thread_id: str, turn_id: str) -> dict:
+            return {}
+
+    try:
+        run_golembot_office_task(
+            message="生成项目方案",
+            session_key="feishu:oc_123",
+            chat_id="oc_123",
+            sender_id="ou_456",
+            tasks_root=tmp_path,
+            task_id="gb-publish-fail",
+            generator="app-server",
+            publish=True,
+            codex_backend=FakeAppServerBackend(),
+            runner=lambda *_args, **_kwargs: json.dumps({"ok": True, "data": {}}),
+        )
+    except Exception as exc:
+        assert "no publishable artifact items found" in str(exc) or "no Feishu remote artifacts" in str(exc)
+    else:
+        raise AssertionError("expected publish-time remote artifact validation to fail")
 
 
 def test_run_golembot_office_task_can_use_app_server_generator(tmp_path: Path) -> None:

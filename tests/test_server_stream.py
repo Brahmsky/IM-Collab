@@ -31,8 +31,24 @@ EXPECTED_ARTIFACTS = {
 EXPECTED_CURRENT_TURN_ARTIFACTS = [
     {
         "id": "proposal",
+        "family": "document",
         "kind": "document",
         "title": "项目方案",
+        "input": None,
+        "output": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_456",
+            "document_id": "doc_456",
+            "object_type": "document",
+        },
+        "display": {
+            "card_kind": "document",
+            "label": "项目方案",
+            "click_url": "https://docs.example.com/doc_456",
+            "preview_value": "https://docs.example.com/doc_456",
+            "clickable": True,
+        },
+        "delivery": {"feishu_card_mode": "link_button"},
         "label": "项目方案",
         "path": None,
         "remote": {

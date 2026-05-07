@@ -8,13 +8,13 @@ from typing import Any, Callable
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 
-from bridge.artifacts import artifact_items, remote_label
+from bridge.artifacts import artifact_card_payload, artifact_fingerprint, artifact_family, artifact_items, artifact_output
 from bridge.chat_messages import read_chat_messages
 from bridge.task_console_web import handle_console_action, handle_console_action_result, make_codex_app_server_retry
 from bridge.task_control import read_control_commands
 from bridge.task_index import TaskSummary, build_task_index, summarize_events
 from bridge.task_ops import retry_golembot_task
-from bridge.task_protocol import ProtocolError, read_artifacts, read_status
+from bridge.task_protocol import ProtocolError, read_artifacts, read_status, write_status
 
 RetryFunc = Callable[..., dict[str, Any]]
 AppServerRetryFunc = Callable[[Path, bool], dict[str, Any]]
@@ -97,7 +97,15 @@ def create_app(
 
     @app.post("/api/tasks/<task_id>/interrupt")
     def interrupt_task(task_id: str) -> Response:
-        handle_console_action(tasks_root, {"action": "interrupt", "task_id": _require_task_id(task_id)})
+        tid = _require_task_id(task_id)
+        handle_console_action(tasks_root, {"action": "interrupt", "task_id": tid})
+        task_dir = tasks_root / tid
+        try:
+            status = read_status(task_dir)
+            if status.get("state") == "running":
+                write_status(task_dir, "queued")
+        except Exception:
+            pass
         return jsonify({"ok": True})
 
     @app.post("/api/tasks/<task_id>/ack")
@@ -289,11 +297,11 @@ def _current_turn_artifacts(task_dir: Path) -> list[dict[str, Any]]:
         artifacts = read_artifacts(task_dir)
     except ProtocolError:
         return []
-    return _prioritize_clickable([
-        _artifact_payload({**item, "source_task_id": task_dir.name})
-        for item in artifact_items(artifacts)
-        if _include_artifact(item)
-    ])
+    baseline = _latest_artifact_baseline(task_dir)
+    items = [item for item in artifact_items(artifacts) if _include_artifact(item)]
+    if baseline is not None:
+        items = [item for item in items if _artifact_changed_since_baseline(item, baseline)]
+    return _prioritize_clickable([artifact_card_payload(item, source_task_id=task_dir.name) for item in items])
 
 
 def _session_artifacts(tasks_root: Path, selected: TaskSummary) -> list[dict[str, Any]]:
@@ -309,80 +317,57 @@ def _session_artifacts(tasks_root: Path, selected: TaskSummary) -> list[dict[str
         for item in artifact_items(artifacts):
             if not _include_artifact(item):
                 continue
-            key = (_artifact_kind(item), _artifact_url(item) or remote_label(item) or str(item.get("path") or ""))
+            payload = artifact_card_payload(item, source_task_id=task.task_id)
+            key = (str(payload.get("family") or ""), str(payload.get("url") or payload.get("label") or payload.get("path") or ""))
             if key in seen:
                 continue
             seen.add(key)
-            out.append(_artifact_payload({**item, "source_task_id": task.task_id}))
+            out.append(payload)
     return _prioritize_clickable(out)
 
 
 def _include_artifact(item: dict[str, Any]) -> bool:
-    values = {
-        str(item.get("kind") or "").lower(),
-        str(item.get("type") or "").lower(),
-        str(item.get("id") or "").lower(),
-    }
-    if values & {"document", "docx", "slides", "presentation", "ppt", "pptx", "whiteboard", "board", "diagram", "mermaid"}:
-        return True
-    remote = item.get("remote")
-    if not isinstance(remote, dict):
+    output = artifact_output(item)
+    if not isinstance(output, dict):
         return False
-    return any(remote.get(field) for field in ("document_id", "xml_presentation_id", "whiteboard_token"))
+    if output.get("provider") != "feishu":
+        return False
+    return any(
+        output.get(field)
+        for field in ("url", "web_url", "permalink", "document_id", "xml_presentation_id", "whiteboard_token", "token", "id")
+    )
 
 
-def _artifact_payload(item: dict[str, Any]) -> dict[str, Any]:
-    url = _artifact_url(item)
-    return {
-        "id": str(item.get("id") or item.get("kind") or ""),
-        "kind": _artifact_kind(item),
-        "title": _artifact_title(item),
-        "label": _artifact_title(item),
-        "path": str(item.get("path") or "") or None,
-        "remote": item.get("remote") if isinstance(item.get("remote"), dict) else None,
-        "url": url,
-        "clickable": bool(url),
-        "source_task_id": _artifact_source_task_id(item),
-    }
+def _latest_artifact_baseline(task_dir: Path) -> dict[tuple[str, str], str] | None:
+    latest: dict[tuple[str, str], str] | None = None
+    for command in read_control_commands(task_dir):
+        payload = command.get("payload") if isinstance(command.get("payload"), dict) else {}
+        baseline = payload.get("artifact_baseline")
+        if not isinstance(baseline, list):
+            continue
+        parsed: dict[tuple[str, str], str] = {}
+        for row in baseline:
+            if not isinstance(row, dict):
+                continue
+            artifact_id = str(row.get("id") or "").strip()
+            family = str(row.get("family") or "").strip()
+            fingerprint = str(row.get("fingerprint") or "").strip()
+            if not artifact_id or not family or not fingerprint:
+                continue
+            parsed[(family, artifact_id)] = fingerprint
+        latest = parsed
+    return latest
 
 
-def _artifact_url(item: dict[str, Any]) -> str | None:
-    remote = item.get("remote") if isinstance(item.get("remote"), dict) else {}
-    if isinstance(remote, dict):
-        for field in ("url", "web_url", "permalink"):
-            value = remote.get(field)
-            if value:
-                return str(value)
-    return None
-
-
-def _artifact_kind(item: dict[str, Any]) -> str:
-    raw = str(item.get("kind") or item.get("id") or "").lower()
-    if raw in {"presentation", "ppt", "pptx"}:
-        return "slides"
-    if raw in {"diagram", "mermaid", "board"}:
-        return "whiteboard"
-    if raw == "docx":
-        return "document"
-    return raw or "artifact"
-
-
-def _artifact_title(item: dict[str, Any]) -> str:
-    title = str(item.get("title") or "").strip()
-    if title:
-        return title
-    remote = item.get("remote")
-    if isinstance(remote, dict):
-        remote_title = str(remote.get("label") or remote.get("title") or remote.get("name") or "").strip()
-        if remote_title:
-            return remote_title
-    return str(item.get("kind") or item.get("id") or "artifact")
+def _artifact_changed_since_baseline(item: dict[str, Any], baseline: dict[tuple[str, str], str]) -> bool:
+    key = (artifact_family(item), str(item.get("id") or item.get("kind") or ""))
+    current = artifact_fingerprint(item)
+    previous = baseline.get(key)
+    return previous != current
 
 
 def _prioritize_clickable(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    clickable = [item for item in items if item.get("clickable") is True]
-    fallback = [item for item in items if item.get("clickable") is not True]
-    return clickable + fallback
+    return [item for item in items if item.get("clickable") is True]
 
 
 def _artifact_source_task_id(item: dict[str, Any]) -> str | None:
@@ -407,6 +392,10 @@ def _parse_iso_datetime(raw: str) -> datetime | None:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 def _task_id_for_session(tasks_root: Path, session_key: str) -> str:

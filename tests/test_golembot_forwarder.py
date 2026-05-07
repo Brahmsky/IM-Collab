@@ -40,7 +40,8 @@ def test_build_golembot_prompt_keeps_publish_outside_codex() -> None:
     prompt = build_golembot_prompt(event, publish=True)
 
     assert "--publish" not in prompt
-    assert "Python Bridge will perform Feishu publishing" in prompt
+    assert "directly create or update the requested Feishu-native artifacts" in prompt
+    assert "local task artifacts" not in prompt
 
 
 def test_forward_event_to_golembot_posts_chat_request_with_codex_generator() -> None:

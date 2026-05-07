@@ -33,7 +33,7 @@ def build_codex_task_prompt(task_dir: Path) -> str:
 你必须产出：
 - `plan.json`：一个包含 `task_id` 和 `steps` 的对象；每个 step 必须带有 `id`、`title` 和 `status`。
 - 符合用户请求的工件文件或结果记录。不要因为实现方便，就强行把所有任务都产出成 `document/slides/whiteboard`；如果用户要的是别的内容，就按真实需求交付。
-- `artifacts.json`：必须包含 `task_id`、`items`、`summary` 和 `next_steps`。
+- `artifacts.json`：必须包含 `task_id`、`items`、`summary` 和 `next_steps`，并把每个工件写成稳定 schema，而不是临时拼字段。
 
 `items` 里的每一项都描述一个你生成出来的工件，例如：
 
@@ -41,13 +41,53 @@ def build_codex_task_prompt(task_dir: Path) -> str:
 {{
   "task_id": "{task_dir.name}",
   "items": [
-    {{"id": "brief", "kind": "document", "type": "markdown", "path": "{_display_path(task_dir / 'brief.md')}"}},
-    {{"id": "deck", "kind": "slides", "type": "markdown", "path": "{_display_path(task_dir / 'deck.md')}"}}
+    {{
+      "id": "proposal",
+      "kind": "document",
+      "family": "document",
+      "input": {{"format": "docx_xml", "path": "{_display_path(task_dir / 'proposal.xml')}"}},
+      "output": {{
+        "provider": "feishu",
+        "object_type": "document",
+        "document_id": "doc_xxx",
+        "url": "https://example.feishu.cn/docx/doc_xxx"
+      }},
+      "display": {{
+        "card_kind": "document",
+        "label": "项目方案",
+        "click_url": "https://example.feishu.cn/docx/doc_xxx",
+        "preview_value": "https://example.feishu.cn/docx/doc_xxx",
+        "clickable": true
+      }},
+      "delivery": {{"feishu_card_mode": "link_button"}}
+    }},
+    {{
+      "id": "deck",
+      "kind": "slides",
+      "family": "slides",
+      "input": {{"format": "slides_xml", "path": "{_display_path(task_dir / 'deck.slides.json')}"}},
+      "output": {{
+        "provider": "feishu",
+        "object_type": "slides",
+        "xml_presentation_id": "slides_xxx",
+        "url": "https://example.feishu.cn/slides/slides_xxx"
+      }},
+      "display": {{
+        "card_kind": "slides",
+        "label": "答辩 PPT",
+        "click_url": "https://example.feishu.cn/slides/slides_xxx",
+        "preview_value": "https://example.feishu.cn/slides/slides_xxx",
+        "clickable": true
+      }},
+      "delivery": {{"feishu_card_mode": "link_button"}}
+    }}
   ],
   "summary": "...",
   "next_steps": []
 }}
 ```
+
+请直接调用 `lark-cli`、Feishu OpenAPI 和现有 office wheels 去创建或更新真实飞书对象，而不是退回“先写本地 markdown，再让 Python 二次转换”的低能力路径。
 
 `artifacts.json` 里的路径可以是相对路径，也可以是绝对路径，但都必须真实指向你生成、下载、整理或更新后的结果文件。请保留用户实际需要的工件结构，不要为了适配固定字段而改写需求。
 

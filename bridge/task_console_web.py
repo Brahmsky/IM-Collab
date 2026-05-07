@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from bridge.codex_app_server import AppServerClient, CodexAppServerBackend, StdioAppServerTransport
+from bridge.artifacts import artifact_baseline_snapshot
 from bridge.chat_messages import append_chat_message, seed_chat_messages_from_task
 from bridge.task_control import append_control_command
 from bridge.task_ops import ack_task, retry_golembot_task
@@ -124,6 +125,7 @@ def handle_console_action_result(
                 "source": "gui",
                 "kind": "operator_followup",
                 "text": _required(form, "text"),
+                "artifact_baseline": artifact_baseline_snapshot(_safe_artifacts(task_dir)),
             },
             operator="operator",
         )

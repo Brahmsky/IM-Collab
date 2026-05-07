@@ -13,9 +13,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTaskStore } from '@/stores/taskStore'
+import { useChatStore } from '@/stores/chatStore'
+import { useSseStore } from '@/stores/sseStore'
 import SessionSidebar from './SessionSidebar.vue'
 import ChatPanel from './ChatPanel.vue'
 import InspectorPanel from './InspectorPanel.vue'
@@ -23,10 +25,27 @@ import InspectorPanel from './InspectorPanel.vue'
 const route = useRoute()
 const router = useRouter()
 const taskStore = useTaskStore()
+const chatStore = useChatStore()
+const sseStore = useSseStore()
+let refreshTimer: number | null = null
 
 onMounted(() => {
   if (route.query.task) {
     taskStore.selectTask(route.query.task as string)
+  }
+
+  refreshTimer = window.setInterval(async () => {
+    await taskStore.fetchTasks()
+    if (taskStore.selectedTaskId && !sseStore.isStreaming) {
+      await taskStore.fetchTaskDetail(taskStore.selectedTaskId)
+      chatStore.syncFromTaskDetail()
+    }
+  }, 3000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer !== null) {
+    window.clearInterval(refreshTimer)
   }
 })
 

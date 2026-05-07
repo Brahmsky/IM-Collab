@@ -48,12 +48,41 @@ export interface ArtifactRemote {
   id?: string;
 }
 
+export interface ArtifactInput {
+  format?: string;
+  path?: string;
+}
+
+export interface ArtifactOutput extends ArtifactRemote {
+  object_type?: string;
+}
+
+export interface ArtifactDisplay {
+  card_kind?: DisplayArtifactKind;
+  label?: string;
+  click_url?: string;
+  preview_value?: string;
+  clickable?: boolean;
+}
+
+export interface ArtifactDelivery {
+  feishu_card_mode?: 'link_button' | 'markdown_fallback' | 'file_preview';
+}
+
 export interface ArtifactItem {
   id: string;
   kind: string;
+  family?: string;
   title?: string;
   path?: string;
+  input?: ArtifactInput | null;
+  output?: ArtifactOutput | null;
+  display?: ArtifactDisplay | null;
+  delivery?: ArtifactDelivery | null;
   remote?: ArtifactRemote;
+  url?: string | null;
+  clickable?: boolean;
+  source_task_id?: string | null;
 }
 
 export interface Artifacts {

@@ -5,11 +5,11 @@ import subprocess
 from pathlib import Path
 
 from bridge import lark_docs
-from bridge.lark_docs import build_create_doc_args, create_doc_from_markdown
+from bridge.lark_docs import build_create_doc_args, create_doc, create_doc_from_docx_xml, create_doc_from_markdown
 
 
 def test_build_create_doc_args_uses_v2_markdown_content() -> None:
-    args = build_create_doc_args(Path("document.md"), title="IM-Collab Smoke", dry_run=True)
+    args = build_create_doc_args("@document.md", title="IM-Collab Smoke", dry_run=True)
 
     assert args == [
         "lark-cli",
@@ -23,6 +23,25 @@ def test_build_create_doc_args_uses_v2_markdown_content() -> None:
         "@document.md",
         "--doc-format",
         "markdown",
+        "--dry-run",
+    ]
+
+
+def test_build_create_doc_args_supports_xml_inline_content() -> None:
+    args = build_create_doc_args("<docx><p>Demo</p></docx>", title="XML Demo", doc_format="xml", dry_run=True)
+
+    assert args == [
+        "lark-cli",
+        "docs",
+        "+create",
+        "--api-version",
+        "v2",
+        "--title",
+        "XML Demo",
+        "--content",
+        "<docx><p>Demo</p></docx>",
+        "--doc-format",
+        "xml",
         "--dry-run",
     ]
 
@@ -57,6 +76,34 @@ def test_create_doc_from_markdown_passes_relative_content_path_to_cli(tmp_path: 
 
     content_index = seen_args.index("--content")
     assert seen_args[content_index + 1] == "@document.md"
+
+
+def test_create_doc_supports_inline_xml_content() -> None:
+    seen_args: list[str] = []
+
+    def fake_run(args: list[str]) -> str:
+        seen_args.extend(args)
+        return json.dumps({"ok": True})
+
+    create_doc(title="Inline XML", content="<docx><p>Hi</p></docx>", doc_format="xml", runner=fake_run)
+
+    content_index = seen_args.index("--content")
+    assert seen_args[content_index + 1] == "<docx><p>Hi</p></docx>"
+    assert seen_args[seen_args.index("--doc-format") + 1] == "xml"
+
+
+def test_create_doc_from_docx_xml_uses_xml_format(tmp_path: Path) -> None:
+    document = tmp_path / "document.xml"
+    document.write_text("<docx><p>Demo</p></docx>", encoding="utf-8")
+    seen_args: list[str] = []
+
+    def fake_run(args: list[str]) -> str:
+        seen_args.extend(args)
+        return json.dumps({"ok": True})
+
+    create_doc_from_docx_xml(document, title="XML Demo", runner=fake_run)
+
+    assert seen_args[seen_args.index("--doc-format") + 1] == "xml"
 
 
 def test_create_doc_from_markdown_runs_subprocess_from_file_directory(

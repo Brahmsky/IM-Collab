@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from bridge.artifacts import artifact_items, remote_label, remote_url
+from bridge.artifacts import artifact_delivery, artifact_display, artifact_items, artifact_title
 from bridge.lark_docs import _extract_json
 
 Runner = Callable[[list[str]], str]
@@ -187,8 +187,9 @@ def build_delivery_markdown(artifacts: dict[str, Any]) -> str:
     if not items:
         lines.append(str(artifacts.get("summary") or "任务已完成。"))
     for item in items:
-        label = str(item.get("title") or item.get("kind") or item.get("id") or "材料")
-        value = remote_label(item) or "已生成"
+        display = artifact_display(item)
+        label = str(display.get("label") or artifact_title(item))
+        value = str(display.get("click_url") or display.get("preview_value") or "已生成")
         lines.extend([label, value, ""])
     lines.append("还需要我根据群里的消息补充背景、调整结构，或者继续整理成会议纪要/待办吗？")
     return "\n".join(lines).rstrip() + "\n"
@@ -197,9 +198,11 @@ def build_delivery_markdown(artifacts: dict[str, Any]) -> str:
 def build_delivery_card(artifacts: dict[str, Any]) -> dict[str, Any]:
     elements: list[dict[str, Any]] = [{"tag": "markdown", "content": "材料已经生成。可以直接打开查看，也可以继续在群里补充修改要求。"}]
     for index, item in enumerate(artifact_items(artifacts)):
-        label = str(item.get("title") or item.get("kind") or item.get("id") or "材料")
-        url = remote_url(item)
-        if url:
+        display = artifact_display(item)
+        delivery = artifact_delivery(item)
+        label = str(display.get("label") or artifact_title(item))
+        url = display.get("click_url")
+        if delivery.get("feishu_card_mode") == "link_button" and url:
             elements.append(
                 {
                     "tag": "button",
@@ -209,7 +212,7 @@ def build_delivery_card(artifacts: dict[str, Any]) -> dict[str, Any]:
                 }
             )
         else:
-            value = remote_label(item)
+            value = display.get("preview_value")
             if value:
                 elements.append({"tag": "markdown", "content": f"{label}: {value}"})
     return {

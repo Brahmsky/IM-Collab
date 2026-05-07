@@ -9,6 +9,7 @@ from typing import Any
 
 from bridge.codex_app_server_task_runner import AppServerTaskBackend, run_codex_app_server_task
 from bridge.codex_task_runner import run_codex_task
+from bridge.feishu_delivery import has_feishu_remote_artifacts, has_unpublished_delivery_artifacts
 from bridge.feishu_delivery import publish_task_artifacts_to_feishu
 from bridge.group_briefing import brief_needs_confirmation, build_confirmation_card, build_group_brief, build_group_brief_from_evidence
 from bridge.group_briefing import render_confirmation_markdown, render_group_brief_markdown
@@ -46,8 +47,16 @@ def run_golembot_office_task(
         task_dir = create_task(
             tasks_root,
             task_id,
-            _request_markdown(message, session_key, chat_id, sender_id, conversation_context=conversation_context),
+            _request_markdown(
+                message,
+                session_key,
+                chat_id,
+                sender_id,
+                publish_requested=publish,
+                conversation_context=conversation_context,
+            ),
         )
+        _normalize_request_markdown_contract(task_dir, publish_requested=publish)
         brief = _write_group_brief(
             task_dir,
             chat_id,
@@ -58,6 +67,7 @@ def run_golembot_office_task(
         )
     else:
         brief = None
+        _normalize_request_markdown_contract(task_dir, publish_requested=publish)
         _append_confirmation_controls_to_request(task_dir)
 
     binding = bind_active_task(
@@ -132,9 +142,17 @@ def run_golembot_office_task(
                 )
         if publish:
             publish_task_artifacts_to_feishu(task_dir, runner=runner)
+            artifacts = read_artifacts(task_dir)
+            if not has_feishu_remote_artifacts(artifacts):
+                raise RuntimeError("publish requested but artifacts.json still has no Feishu remote artifacts")
+            if has_unpublished_delivery_artifacts(artifacts):
+                raise RuntimeError("publish requested but artifacts.json still contains local-only delivery artifacts")
         artifacts = read_artifacts(task_dir)
     except Exception as exc:
-        write_status(task_dir, "failed", error=f"GolemBot office loop failed: {exc}")
+        prefix = "GolemBot office loop failed"
+        if publish:
+            prefix = "GolemBot remote delivery failed"
+        write_status(task_dir, "failed", error=f"{prefix}: {exc}")
         try:
             clear_active_task(bindings_path, session_key)
         except Exception:
@@ -223,10 +241,20 @@ def _request_markdown(
     session_key: str,
     chat_id: str,
     sender_id: str,
+    publish_requested: bool = False,
     conversation_context: list[dict[str, Any]] | None = None,
 ) -> str:
     context_markdown = _conversation_context_markdown(conversation_context or [])
     brief_note = _brief_note(conversation_context or [])
+    delivery_mode = (
+        """
+## Delivery Mode
+
+This task must complete as Feishu-native remote delivery. Do not stop at local files. Create or update the target Feishu document/slides/whiteboard directly when those are part of the requested deliverables, then persist their remote metadata into `artifacts.json`.
+"""
+        if publish_requested
+        else ""
+    )
     return f"""# GolemBot Office Request
 
 session_key: {session_key}
@@ -238,19 +266,52 @@ sender_id: {sender_id}
 {message}
 {context_markdown}
 {brief_note}
+{delivery_mode}
 
 ## Execution Boundary
 
 GolemBot owns IM channel and harness session management. IM-Collab owns only the durable office task protocol.
-Use Codex + superpowers as the only orchestration layer. Prefer existing Feishu and office wheels over handwritten office logic.
+Use Codex + superpowers as the only orchestration layer. Prefer direct execution through existing office wheels such as `lark-cli`, Feishu OpenAPI, and other available tool surfaces over handwritten office logic or local placeholder generation.
 
 ## Acceptance Criteria
 
-- Create or update local office artifacts.
-- Publish to Feishu when requested by the caller.
-- Write final delivery metadata to artifacts.json.
-- Return Markdown that GolemBot can send to the source conversation.
+- Create or update the real office deliverables requested by the user, preferring Feishu-native results when possible.
+- Persist the result contract to `artifacts.json`, including remote links/IDs/metadata for any created or updated Feishu objects.
+- Publish or reply in Feishu when requested by the caller, using the generated remote artifacts instead of recreating them through a second publishing path.
+- Return reply content that GolemBot can send back to the source conversation.
 """
+
+
+def _normalize_request_markdown_contract(task_dir: Path, publish_requested: bool = False) -> None:
+    request_path = task_dir / "request.md"
+    if not request_path.is_file():
+        return
+    current = request_path.read_text(encoding="utf-8")
+    updated = current.replace(
+        "Use Codex + superpowers as the only orchestration layer. Prefer existing Feishu and office wheels over handwritten office logic.",
+        "Use Codex + superpowers as the only orchestration layer. Prefer direct execution through existing office wheels such as `lark-cli`, Feishu OpenAPI, and other available tool surfaces over handwritten office logic or local placeholder generation.",
+    ).replace(
+        "- Create or update local office artifacts.\n"
+        "- Publish to Feishu when requested by the caller.\n"
+        "- Write final delivery metadata to artifacts.json.\n"
+        "- Return Markdown that GolemBot can send to the source conversation.\n",
+        "- Create or update the real office deliverables requested by the user, preferring Feishu-native results when possible.\n"
+        "- Persist the result contract to `artifacts.json`, including remote links/IDs/metadata for any created or updated Feishu objects.\n"
+        "- Publish or reply in Feishu when requested by the caller, using the generated remote artifacts instead of recreating them through a second publishing path.\n"
+        "- Return reply content that GolemBot can send back to the source conversation.\n",
+    )
+    if publish_requested and "## Delivery Mode" not in updated:
+        insertion = """
+## Delivery Mode
+
+This task must complete as Feishu-native remote delivery. Do not stop at local files. Create or update the target Feishu document/slides/whiteboard directly when those are part of the requested deliverables, then persist their remote metadata into `artifacts.json`.
+
+"""
+        marker = "## Execution Boundary"
+        if marker in updated:
+            updated = updated.replace(marker, insertion + marker, 1)
+    if updated != current:
+        request_path.write_text(updated, encoding="utf-8")
 
 
 def _write_group_brief(

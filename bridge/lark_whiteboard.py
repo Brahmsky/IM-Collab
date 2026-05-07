@@ -53,6 +53,7 @@ def append_whiteboard_to_doc(
 def build_update_whiteboard_args(
     whiteboard_token: str,
     idempotency_token: str,
+    input_format: str = "mermaid",
     dry_run: bool = False,
 ) -> list[str]:
     args = [
@@ -66,7 +67,7 @@ def build_update_whiteboard_args(
         "--source",
         "-",
         "--input_format",
-        "mermaid",
+        input_format,
         "--idempotent-token",
         idempotency_token,
         "--overwrite",
@@ -77,16 +78,17 @@ def build_update_whiteboard_args(
     return args
 
 
-def update_whiteboard_from_mermaid(
+def update_whiteboard_from_source(
     whiteboard_token: str,
-    mermaid_path: Path,
+    source_path: Path,
     idempotency_token: str,
+    input_format: str = "mermaid",
     dry_run: bool = False,
     runner: Runner | None = None,
 ) -> dict[str, Any]:
-    input_text = mermaid_path.read_text(encoding="utf-8")
+    input_text = source_path.read_text(encoding="utf-8")
     output = _run(
-        build_update_whiteboard_args(whiteboard_token, idempotency_token, dry_run=dry_run),
+        build_update_whiteboard_args(whiteboard_token, idempotency_token, input_format=input_format, dry_run=dry_run),
         input_text,
         runner,
     )
@@ -98,6 +100,24 @@ def update_whiteboard_from_mermaid(
         "created_node_id": response.get("data", {}).get("created_node_id"),
         "raw": output,
     }
+
+
+def update_whiteboard_from_mermaid(
+    whiteboard_token: str,
+    mermaid_path: Path,
+    idempotency_token: str,
+    input_format: str = "mermaid",
+    dry_run: bool = False,
+    runner: Runner | None = None,
+) -> dict[str, Any]:
+    return update_whiteboard_from_source(
+        whiteboard_token,
+        mermaid_path,
+        idempotency_token=idempotency_token,
+        input_format=input_format,
+        dry_run=dry_run,
+        runner=runner,
+    )
 
 
 def ensure_whiteboard_target(
@@ -126,12 +146,13 @@ def ensure_whiteboard_target(
     }
 
 
-def create_or_update_whiteboard_from_mermaid(
-    mermaid_path: Path,
+def create_or_update_whiteboard_from_source(
+    source_path: Path,
     *,
     idempotency_token: str,
     document_id_or_url: str | None = None,
     whiteboard_token: str | None = None,
+    input_format: str = "mermaid",
     dry_run: bool = False,
     runner: Runner | None = None,
 ) -> dict[str, Any]:
@@ -147,14 +168,36 @@ def create_or_update_whiteboard_from_mermaid(
     else:
         raise ValueError("either document_id_or_url or whiteboard_token is required")
 
-    update = update_whiteboard_from_mermaid(
+    update = update_whiteboard_from_source(
         str(target["whiteboard_token"]),
-        mermaid_path,
+        source_path,
         idempotency_token=idempotency_token,
+        input_format=input_format,
         dry_run=dry_run,
         runner=runner,
     )
     return {**target, "created_node_id": update.get("created_node_id"), "response": update.get("response"), "raw": update.get("raw")}
+
+
+def create_or_update_whiteboard_from_mermaid(
+    mermaid_path: Path,
+    *,
+    idempotency_token: str,
+    document_id_or_url: str | None = None,
+    whiteboard_token: str | None = None,
+    input_format: str = "mermaid",
+    dry_run: bool = False,
+    runner: Runner | None = None,
+) -> dict[str, Any]:
+    return create_or_update_whiteboard_from_source(
+        mermaid_path,
+        idempotency_token=idempotency_token,
+        document_id_or_url=document_id_or_url,
+        whiteboard_token=whiteboard_token,
+        input_format=input_format,
+        dry_run=dry_run,
+        runner=runner,
+    )
 
 
 def _run(args: list[str], input_text: str | None, runner: Runner | None) -> str:

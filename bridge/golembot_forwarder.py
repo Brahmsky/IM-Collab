@@ -17,7 +17,7 @@ def build_golembot_prompt(payload: dict[str, Any], publish: bool = False, genera
     session_key = _session_key(event)
     task_id = _task_id(event.message_id)
     publish_note = (
-        "\nPython Bridge will perform Feishu publishing after Codex returns; Codex should only generate local task artifacts."
+        "\nWhen possible, Codex should directly create or update the requested Feishu-native artifacts through `lark-cli` or other available office wheels, and persist their remote metadata into `artifacts.json`. Only fall back to a second publishing pass when direct remote execution is genuinely unavailable."
         if publish
         else ""
     )
@@ -38,7 +38,7 @@ If this is a concrete office deliverable request, run:
 
 cd {PROJECT_ROOT.as_posix()} && rtk .venv/bin/python scripts/run_golembot_office_task.py --message "{_shell_safe(event.text)}" --session-key "{session_key}" --chat-id "{event.chat_id}" --sender-id "{event.sender_open_id}" --task-id {task_id} --generator {generator}
 
-Then send the returned `reply_markdown` as your final answer. If this is not an office task, answer normally and do not create a durable task.{publish_note}
+Then send the returned `reply_markdown` as your final answer. Treat `artifacts.json` as the durable result contract, and prefer direct Feishu execution over local placeholder generation. If this is not an office task, answer normally and do not create a durable task.{publish_note}
 """
 
 

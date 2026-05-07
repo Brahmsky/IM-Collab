@@ -105,8 +105,24 @@ EXPECTED_ARTIFACTS = {
 EXPECTED_CURRENT_TURN_ARTIFACTS = [
     {
         "id": "proposal",
+        "family": "document",
         "kind": "document",
         "title": "项目方案",
+        "input": None,
+        "output": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_123",
+            "document_id": "doc_123",
+            "object_type": "document",
+        },
+        "display": {
+            "card_kind": "document",
+            "label": "项目方案",
+            "click_url": "https://docs.example.com/doc_123",
+            "preview_value": "https://docs.example.com/doc_123",
+            "clickable": True,
+        },
+        "delivery": {"feishu_card_mode": "link_button"},
         "label": "项目方案",
         "path": None,
         "remote": {
@@ -120,8 +136,24 @@ EXPECTED_CURRENT_TURN_ARTIFACTS = [
     },
     {
         "id": "deck",
+        "family": "slides",
         "kind": "slides",
         "title": "答辩 PPT",
+        "input": None,
+        "output": {
+            "provider": "feishu",
+            "url": "https://slides.example.com/slide_123",
+            "xml_presentation_id": "slide_123",
+            "object_type": "slides",
+        },
+        "display": {
+            "card_kind": "slides",
+            "label": "答辩 PPT",
+            "click_url": "https://slides.example.com/slide_123",
+            "preview_value": "https://slides.example.com/slide_123",
+            "clickable": True,
+        },
+        "delivery": {"feishu_card_mode": "link_button"},
         "label": "答辩 PPT",
         "path": None,
         "remote": {
@@ -135,8 +167,24 @@ EXPECTED_CURRENT_TURN_ARTIFACTS = [
     },
     {
         "id": "board",
+        "family": "whiteboard",
         "kind": "whiteboard",
         "title": "流程白板",
+        "input": None,
+        "output": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_123#whiteboard",
+            "whiteboard_token": "wb_123",
+            "object_type": "whiteboard",
+        },
+        "display": {
+            "card_kind": "whiteboard",
+            "label": "流程白板",
+            "click_url": "https://docs.example.com/doc_123#whiteboard",
+            "preview_value": "https://docs.example.com/doc_123#whiteboard",
+            "clickable": True,
+        },
+        "delivery": {"feishu_card_mode": "link_button"},
         "label": "流程白板",
         "path": None,
         "remote": {
@@ -154,8 +202,24 @@ EXPECTED_SESSION_ARTIFACTS = [
     *EXPECTED_CURRENT_TURN_ARTIFACTS,
     {
         "id": "meeting-notes",
+        "family": "document",
         "kind": "document",
         "title": "会前纪要",
+        "input": None,
+        "output": {
+            "provider": "feishu",
+            "url": "https://docs.example.com/doc_122",
+            "document_id": "doc_122",
+            "object_type": "document",
+        },
+        "display": {
+            "card_kind": "document",
+            "label": "会前纪要",
+            "click_url": "https://docs.example.com/doc_122",
+            "preview_value": "https://docs.example.com/doc_122",
+            "clickable": True,
+        },
+        "delivery": {"feishu_card_mode": "link_button"},
         "label": "会前纪要",
         "path": None,
         "remote": {
@@ -165,21 +229,6 @@ EXPECTED_SESSION_ARTIFACTS = [
         },
         "url": "https://docs.example.com/doc_122",
         "clickable": True,
-        "source_task_id": "task-contract-0",
-    },
-    {
-        "id": "history-board",
-        "kind": "whiteboard",
-        "title": "历史流程白板",
-        "label": "历史流程白板",
-        "path": None,
-        "remote": {
-            "provider": "feishu",
-            "label": "历史流程白板",
-            "whiteboard_token": "wb_122",
-        },
-        "url": None,
-        "clickable": False,
         "source_task_id": "task-contract-0",
     },
 ]
@@ -412,6 +461,81 @@ def test_get_task_detail_returns_messages_controls_artifacts_and_pending_flag(cl
         "session_artifacts": EXPECTED_SESSION_ARTIFACTS,
         "pending_controls": True,
     }
+
+
+def test_get_task_detail_hides_unchanged_previous_artifacts_from_current_turn(tmp_path: Path) -> None:
+    tasks_root = tmp_path / "tasks"
+    event_dir = tmp_path / "events"
+    task_dir = tasks_root / TASK_ID
+    artifact_item = EXPECTED_ARTIFACTS["items"][0]
+
+    _write_json(
+        task_dir / "status.json",
+        {
+            "task_id": TASK_ID,
+            "state": "completed",
+            "created_at": "2026-05-05T08:00:00+00:00",
+            "updated_at": "2026-05-05T08:10:00+00:00",
+            "error": None,
+        },
+    )
+    _write_json(
+        task_dir / "artifacts.json",
+        {
+            "task_id": TASK_ID,
+            "summary": "已完成。",
+            "next_steps": [],
+            "items": [artifact_item],
+        },
+    )
+    _write_jsonl(
+        task_dir / "chat_messages.jsonl",
+        [
+            {"timestamp": "2026-05-05T08:00:00+00:00", "role": "assistant", "text": "上一轮交付", "source": "artifacts"},
+            {"timestamp": "2026-05-05T08:05:00+00:00", "role": "user", "text": "再补充一句", "source": "gui"},
+            {"timestamp": "2026-05-05T08:10:00+00:00", "role": "assistant", "text": "已补充", "source": "artifacts"},
+        ],
+    )
+    from bridge.artifacts import artifact_baseline_snapshot
+    _write_jsonl(
+        task_dir / "control.jsonl",
+        [
+            {
+                "timestamp": "2026-05-05T08:05:00+00:00",
+                "type": "append_instruction",
+                "operator": "gui",
+                "payload": {
+                    "text": "再补充一句",
+                    "artifact_baseline": artifact_baseline_snapshot(
+                        {"task_id": TASK_ID, "summary": "已完成。", "next_steps": [], "items": [artifact_item]}
+                    ),
+                },
+            }
+        ],
+    )
+    _write_json(
+        tasks_root / "task-bindings.json",
+        {
+            SESSION_KEY: {
+                "session_key": SESSION_KEY,
+                "session_title": SESSION_TITLE,
+                "chat_name": "项目答辩群",
+                "chat_id": "oc_demo",
+                "codex_thread_id": "thread_123",
+                "active_turn_id": None,
+                "active_task_id": None,
+                "last_task_id": TASK_ID,
+            }
+        },
+    )
+
+    client = _load_test_client(tasks_root, event_dir)
+    response = client.get(f"/api/tasks/{TASK_ID}")
+
+    assert response.status_code == 200
+    payload = _json(response)
+    assert payload["current_turn_artifacts"] == []
+    assert payload["session_artifacts"]
 
 
 def test_get_task_returns_404_for_missing_task(client: Any) -> None:

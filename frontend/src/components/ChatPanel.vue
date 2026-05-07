@@ -78,7 +78,6 @@ const sseStore = useSseStore()
 
 const scrollContainer = ref<HTMLElement | null>(null)
 const interruptBusy = ref(false)
-const justInterrupted = ref(false)
 
 const taskTitle = computed(() => {
   const task = taskStore.selectedTask
@@ -87,14 +86,12 @@ const taskTitle = computed(() => {
 })
 
 const interruptMode = computed(() => {
-  if (justInterrupted.value) return false
   const task = taskStore.selectedTask
   if (!task) return false
   return task.state === 'running' || sseStore.isStreaming
 })
 
 const currentStateBadgeClass = computed(() => {
-  if (justInterrupted.value) return 'bg-tag-bg-gray text-text-secondary border-border'
   const state = taskStore.selectedTask?.state
   switch (state) {
     case 'running': return 'bg-tag-bg-blue text-primary border-primary/20'
@@ -106,7 +103,6 @@ const currentStateBadgeClass = computed(() => {
 })
 
 const currentStateText = computed(() => {
-  if (justInterrupted.value) return '已中断'
   const state = taskStore.selectedTask?.state
   switch (state) {
     case 'running': return '运行中'
@@ -118,30 +114,28 @@ const currentStateText = computed(() => {
   }
 })
 
+const handleAppend = async (text: string) => {
+  if (!taskStore.selectedTaskId) return
+  try {
+    await chatStore.addUserMessage(text)
+    sseStore.connectStream(taskStore.selectedTaskId)
+  } catch (e) {
+    console.error('Failed to append instruction', e)
+  }
+}
+
 const handleInterrupt = async () => {
   if (!taskStore.selectedTaskId || interruptBusy.value) return
   interruptBusy.value = true
   try {
     await taskStore.interruptTask(taskStore.selectedTaskId)
     sseStore.disconnectStream()
-    justInterrupted.value = true
     await taskStore.fetchTasks()
     await taskStore.fetchTaskDetail(taskStore.selectedTaskId)
   } catch (e) {
     console.error('Failed to interrupt task', e)
   } finally {
     interruptBusy.value = false
-  }
-}
-
-const handleAppend = async (text: string) => {
-  if (!taskStore.selectedTaskId) return
-  justInterrupted.value = false
-  try {
-    await chatStore.addUserMessage(text)
-    sseStore.connectStream(taskStore.selectedTaskId)
-  } catch (e) {
-    console.error('Failed to append instruction', e)
   }
 }
 

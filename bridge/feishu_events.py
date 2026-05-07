@@ -119,13 +119,13 @@ message_type: {event.message_type}
 
 ## Execution Boundary
 
-Use Codex + superpowers as the only orchestration layer. Prefer Feishu CLI built-in skills, lark-openapi-mcp, and Presenton over local office logic.
+Use Codex + superpowers as the only orchestration layer. Prefer direct execution through Feishu CLI built-in skills, Feishu OpenAPI, and other available office tool surfaces over local placeholder generation.
 
 ## Acceptance Criteria
 
-- Create or update the Feishu artifacts requested by the user.
-- Write final delivery metadata to artifacts.json.
-- Reply to the source Feishu message with artifact links.
+- Create or update the Feishu-native artifacts requested by the user.
+- Write final delivery metadata to artifacts.json, including remote links/IDs for the created or updated objects.
+- Reply to the source Feishu message with artifact links or cards built from those remote artifacts.
 """
 
 

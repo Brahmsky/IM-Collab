@@ -38,25 +38,26 @@ const emit = defineEmits<{
 const text = ref('')
 const inputRef = ref<HTMLTextAreaElement | null>(null)
 
-const canSubmit = computed(() => text.value.trim().length > 0)
+const hasDraft = computed(() => text.value.trim().length > 0)
+const showInterrupt = computed(() => !!props.interruptible && !hasDraft.value)
 
 const buttonIcon = computed(() => {
-  if (props.interruptible) return 'stop_circle'
+  if (showInterrupt.value) return 'stop_circle'
   return 'send'
 })
 
 const buttonDisabled = computed(() => {
-  if (props.interruptible) return !!props.interruptBusy
-  return !canSubmit.value
+  if (showInterrupt.value) return !!props.interruptBusy
+  return !hasDraft.value
 })
 
 const buttonClass = computed(() => {
-  if (props.interruptible) {
+  if (showInterrupt.value) {
     return props.interruptBusy
       ? 'bg-[#FFECE8] text-error/40 cursor-not-allowed'
       : 'bg-[#FFECE8] text-error hover:bg-error hover:text-white cursor-pointer shadow-sm'
   }
-  return canSubmit.value
+  return hasDraft.value
     ? 'text-primary hover:bg-tag-bg-blue cursor-pointer'
     : 'text-text-tertiary cursor-not-allowed'
 })
@@ -67,11 +68,11 @@ const handleEnter = (e: KeyboardEvent) => {
     autoGrow()
     return
   }
-  if (canSubmit.value) submit()
+  if (hasDraft.value) submit()
 }
 
 const submit = () => {
-  if (!canSubmit.value) return
+  if (!hasDraft.value) return
   emit('submit', text.value.trim())
   text.value = ''
   nextTick(() => {
@@ -83,7 +84,7 @@ const submit = () => {
 }
 
 const handlePrimaryAction = () => {
-  if (props.interruptible) {
+  if (showInterrupt.value) {
     if (!props.interruptBusy) emit('interrupt')
     return
   }

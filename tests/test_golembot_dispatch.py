@@ -663,6 +663,53 @@ def test_dispatch_group_permission_error_falls_back_to_empty_context_and_continu
     assert result["task_id"] == "im-om_perm"
 
 
+def test_dispatch_group_publish_failure_replies_error_to_group(tmp_path: Path) -> None:
+    event_path = tmp_path / "event.json"
+    tasks_root = tmp_path / "tasks"
+    event_path.write_text(
+        json.dumps(
+            {
+                "type": "im.message.receive_v1",
+                "message_id": "om_fail",
+                "chat_id": "oc_group",
+                "chat_name": "IM-Collab 群聊测试",
+                "chat_type": "group",
+                "message_type": "text",
+                "content": "@飞书 CLI /new 5h 生成项目复盘",
+                "sender_id": "ou_requester",
+            }
+        ),
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+
+    def fake_context_reader(chat_id: str, page_size: int = 20):
+        return []
+
+    def fake_office_runner(**kwargs) -> dict[str, object]:
+        raise RuntimeError("publish requested but artifacts.json still has no Feishu remote artifacts")
+
+    def fake_replier(message_id: str, markdown: str, idempotency_key: str, dry_run: bool) -> dict[str, object]:
+        seen["reply"] = {"message_id": message_id, "markdown": markdown, "dry_run": dry_run}
+        return {"ok": True}
+
+    result = dispatch_event_via_golembot(
+        event_path,
+        gateway_url="http://127.0.0.1:3199",
+        token="secret",
+        publish=True,
+        execute_reply=True,
+        tasks_root=tasks_root,
+        office_runner=fake_office_runner,
+        replier=fake_replier,
+        context_reader=fake_context_reader,
+    )
+
+    assert result["task_id"] == "im-om_fail"
+    assert seen["reply"]["message_id"] == "om_fail"
+    assert "未能形成可回传的飞书远端交付物" in str(seen["reply"]["markdown"])
+
+
 def test_dispatch_group_message_appends_instruction_to_active_turn(tmp_path: Path) -> None:
     event_path = tmp_path / "event.json"
     tasks_root = tmp_path / "tasks"
@@ -882,6 +929,7 @@ def test_dispatch_group_followup_appends_delta_group_context_since_last_absorbed
     assert "昨天有人补充了答辩时间" in command["payload"]["codex_input_text"]
     assert "今天有人补充了封面风格" in command["payload"]["codex_input_text"]
     assert "补充：封面要更正式" in command["payload"]["codex_input_text"]
+    assert "artifact_baseline" in command["payload"]
 
 
 def test_dispatch_group_message_appends_natural_language_to_waiting_task(tmp_path: Path) -> None:

@@ -42,24 +42,39 @@ const toDisplayKind = (kind?: string): DisplayArtifactKind => {
 }
 
 const getArtifactUrl = (item: ArtifactItem) => {
+  if (item.display?.click_url) return item.display.click_url
+  if (item.url) return item.url
+  if (item.output?.url || item.output?.web_url || item.output?.permalink) {
+    return item.output.url || item.output.web_url || item.output.permalink
+  }
   const remote = item.remote
   if (!remote) return undefined
   return remote.url || remote.web_url || remote.permalink
 }
 
 const getArtifactValue = (item: ArtifactItem) => {
-  return getArtifactUrl(item) || item.path || item.remote?.whiteboard_token || item.remote?.token || item.remote?.id
+  return item.display?.preview_value
+    || getArtifactUrl(item)
+    || item.output?.whiteboard_token
+    || item.remote?.whiteboard_token
+    || item.output?.token
+    || item.remote?.token
+    || item.output?.id
+    || item.remote?.id
 }
 
 const toDisplayArtifact = (item: ArtifactItem): DisplayArtifact | null => {
-  const kind = toDisplayKind(item.kind || item.id)
+  const kind = toDisplayKind(item.display?.card_kind || item.family || item.kind || item.id)
   if (!DISPLAYABLE_ARTIFACT_KINDS.has(kind)) return null
+  const url = getArtifactUrl(item)
+  const value = getArtifactValue(item)
+  if (!url && !value) return null
   return {
     id: item.id || item.kind,
-    title: item.title || item.kind || item.id || 'Untitled',
+    title: item.display?.label || item.title || item.kind || item.id || 'Untitled',
     kind,
-    url: getArtifactUrl(item),
-    value: getArtifactValue(item)
+    url,
+    value
   }
 }
 
@@ -109,7 +124,7 @@ export const useTaskStore = defineStore('task', () => {
   const currentTurnArtifacts = computed(() => {
     const detail = selectedTaskDetail.value
     if (!detail) return []
-    return normalizeArtifacts(detail.current_turn_artifacts ?? detail.artifacts?.items)
+    return normalizeArtifacts(detail.current_turn_artifacts)
   })
 
   const sessionArtifacts = computed(() => {
